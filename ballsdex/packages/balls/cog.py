@@ -903,7 +903,7 @@ class Balls(commands.GroupCog, group_name=settings.players_group_cog_name):
             user = self.bot.get_user(player.discord_id)
             if user is None:
                 user = await self.bot.fetch_user(player.discord_id)
-            entries.append((f"{i + 1}. {user.name} {user.id}", f"Balls: {player.ball_count}"))
+            entries.append((f"{i + 1}. {user.name}", f"Balls: {player.ball_count}"))
 
         source = FieldPageSource(entries, per_page=5, inline=False)
         source.embed.title = "Top 10 players"
