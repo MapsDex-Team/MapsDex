@@ -239,7 +239,6 @@ class Balls(app_commands.Group):
         await interaction.response.defer(ephemeral=True, thinking=True)
 
         player, created = await Player.get_or_create(discord_id=user.id)
-
         instances = []
         for _ in range(amount):
             instance = await BallInstance.create(
