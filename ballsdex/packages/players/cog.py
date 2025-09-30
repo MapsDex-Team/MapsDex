@@ -221,15 +221,16 @@ class Player(commands.GroupCog):
         """
         Delete your player data.
         """
-        view = ConfirmChoiceView(interaction)
-        await interaction.response.send_message(
-            "Are you sure you want to delete your player data?", view=view, ephemeral=True
-        )
-        await view.wait()
-        if view.value is None or not view.value:
-            return
-        player, _ = await PlayerModel.get_or_create(discord_id=interaction.user.id)
-        await player.delete()
+        await interaction.response.send_message("This command is disabled.", ephemeral=True)
+        #view = ConfirmChoiceView(interaction)
+        #await interaction.response.send_message(
+        #    "Are you sure you want to delete your player data?", view=view, ephemeral=True
+        #)
+        #await view.wait()
+        #if view.value is None or not view.value:
+        #    return
+        #player, _ = await PlayerModel.get_or_create(discord_id=interaction.user.id)
+        #await player.delete()
 
     @friend.command(name="add")
     async def friend_add(
