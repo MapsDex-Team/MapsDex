@@ -213,6 +213,7 @@ class Balls(app_commands.Group):
         interaction: discord.Interaction[BallsDexBot],
         countryball: BallTransform,
         user: discord.User,
+        amount: app_commands.Range[int, 1, 100] = 1,
         special: SpecialTransform | None = None,
         health_bonus: int | None = None,
         attack_bonus: int | None = None,
@@ -224,44 +225,74 @@ class Balls(app_commands.Group):
         ----------
         countryball: Ball
         user: discord.User
+        amount: int | None
         special: Special | None
         health_bonus: int | None
             Omit this to make it random.
         attack_bonus: int | None
             Omit this to make it random.
         """
+
         # the transformers triggered a response, meaning user tried an incorrect input
         if interaction.response.is_done():
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
 
         player, created = await Player.get_or_create(discord_id=user.id)
-        instance = await BallInstance.create(
-            ball=countryball,
-            player=player,
-            attack_bonus=(
-                attack_bonus
-                if attack_bonus is not None
-                else random.randint(-settings.max_attack_bonus, settings.max_attack_bonus)
-            ),
-            health_bonus=(
-                health_bonus
-                if health_bonus is not None
-                else random.randint(-settings.max_health_bonus, settings.max_health_bonus)
-            ),
-            special=special,
-        )
-        await interaction.followup.send(
-            f"`{countryball.country}` {settings.collectible_name} was successfully given to "
-            f"`{user}`.\nSpecial: `{special.name if special else None}` • ATK: "
-            f"`{instance.attack_bonus:+d}` • HP:`{instance.health_bonus:+d}` "
-        )
-        await log_action(
-            f"{interaction.user} gave {settings.collectible_name} "
-            f"{countryball.country} to {user}. (Special={special.name if special else None} "
-            f"ATK={instance.attack_bonus:+d} HP={instance.health_bonus:+d}).",
-            interaction.client,
-        )
+
+        instances = []
+        for _ in range(amount):
+            instance = await BallInstance.create(
+                ball=countryball,
+                player=player,
+                attack_bonus=(
+                    attack_bonus
+                    if attack_bonus is not None
+                    else random.randint(-settings.max_attack_bonus, settings.max_attack_bonus)
+                ),
+                health_bonus=(
+                    health_bonus
+                    if health_bonus is not None
+                    else random.randint(-settings.max_health_bonus, settings.max_health_bonus)
+                ),
+                special=special,
+            )
+            instances.append(instance)
+
+        if amount == 1:
+            await interaction.followup.send(
+                f"`{countryball.country}` {settings.collectible_name} was successfully given to "
+                f"`{user}`.\nSpecial: `{special.name if special else None}` • ATK: "
+                f"`{instances[0].attack_bonus:+d}` • HP:`{instances[0].health_bonus:+d}` "
+            )
+        else:
+            followup_header = (
+                f"`{countryball.country}` {settings.collectible_name}s were successfully given to "
+                f"`{user}` ({amount} total):"
+            )
+            followup_lines = [
+                f"{i+1}. (Special: `{special.name if special else None}`, ATK: `{inst.attack_bonus:+d}`, HP: `{inst.health_bonus:+d}`)"
+                for i, inst in enumerate(instances)
+            ]
+            await interaction.followup.send(followup_header + "\n" + "\n".join(followup_lines))
+
+        header = f"{interaction.user} gave {amount} {countryball.country}{'\'s' if amount > 1 else ''} to {user}."
+
+        if amount == 1:
+            inst = instances[0]
+            log_message = (
+                f"{interaction.user} gave map {countryball.country} "
+                f"(Special={special.name if special else None} ATK={inst.attack_bonus:+d} HP={inst.health_bonus:+d}) to {user}"
+            )
+        else:
+            header = f"{interaction.user} gave {amount} {countryball.country}'s to {user}."
+            modifier_lines = [
+                f"{i+1}. (Special={special.name if special else None} ATK={inst.attack_bonus:+d} HP={inst.health_bonus:+d})"
+                for i, inst in enumerate(instances)
+            ]
+            log_message = header + "\n" + "\n".join(modifier_lines)
+
+        await log_action(log_message, interaction.client)
 
     @app_commands.command(name="info")
     @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
