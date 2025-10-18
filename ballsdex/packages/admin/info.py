@@ -1,11 +1,11 @@
 import datetime
-
 import discord
 from discord import app_commands
 from discord.utils import format_dt
 
 from ballsdex.core.bot import BallsDexBot
 from ballsdex.core.models import BallInstance, GuildConfig, Player
+from ballsdex.core.utils.logging import log_action
 from ballsdex.core.utils.enums import (
     DONATION_POLICY_MAP,
     FRIEND_POLICY_MAP,
@@ -14,7 +14,6 @@ from ballsdex.core.utils.enums import (
 )
 from ballsdex.core.utils.enums import TRADE_COOLDOWN_POLICY_MAP as TRADE_POLICY_MAP
 from ballsdex.settings import settings
-
 
 class Info(app_commands.Group):
     """
@@ -98,6 +97,7 @@ class Info(app_commands.Group):
         if guild.icon:
             embed.set_thumbnail(url=guild.icon.url)
         await interaction.followup.send(embed=embed, ephemeral=True)
+        await log_action(f"{interaction.user} has viewed info for guild {guild} {guild.id}", interaction.client)
 
     @app_commands.command()
     async def user(
@@ -168,3 +168,4 @@ class Info(app_commands.Group):
         )
         embed.set_thumbnail(url=user.display_avatar)  # type: ignore
         await interaction.followup.send(embed=embed, ephemeral=True)
+        await log_action(f"{interaction.user} has viewed info for user {user} {user.id}", interaction.client)

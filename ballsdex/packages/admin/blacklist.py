@@ -23,7 +23,7 @@ class Blacklist(app_commands.Group):
     """
 
     @app_commands.command(name="add")
-    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids)
     async def blacklist_add(
         self,
         interaction: discord.Interaction[BallsDexBot],
@@ -66,7 +66,7 @@ class Blacklist(app_commands.Group):
             )
 
     @app_commands.command(name="remove")
-    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids)
     async def blacklist_remove(
         self,
         interaction: discord.Interaction[BallsDexBot],
@@ -190,7 +190,7 @@ class BlacklistGuild(app_commands.Group):
     """
 
     @app_commands.command(name="add")
-    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids)
     async def blacklist_add_guild(
         self,
         interaction: discord.Interaction[BallsDexBot],
@@ -246,7 +246,7 @@ class BlacklistGuild(app_commands.Group):
             )
 
     @app_commands.command(name="remove")
-    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids)
     async def blacklist_remove_guild(
         self,
         interaction: discord.Interaction[BallsDexBot],

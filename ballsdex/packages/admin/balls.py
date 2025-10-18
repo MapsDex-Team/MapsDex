@@ -108,7 +108,8 @@ class Balls(app_commands.Group):
             task.cancel()
 
     @app_commands.command()
-    @app_commands.checks.has_any_role(*settings.root_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    @app_commands.checks.cooldown(1, 100, key=lambda i: i.user.id)
     async def spawn(
         self,
         interaction: discord.Interaction[BallsDexBot],
@@ -212,6 +213,7 @@ class Balls(app_commands.Group):
         interaction: discord.Interaction[BallsDexBot],
         countryball: BallTransform,
         user: discord.User,
+        amount: app_commands.Range[int, 1, 100] = 1,
         special: SpecialTransform | None = None,
         health_bonus: int | None = None,
         attack_bonus: int | None = None,
@@ -223,44 +225,73 @@ class Balls(app_commands.Group):
         ----------
         countryball: Ball
         user: discord.User
+        amount: int | None
         special: Special | None
         health_bonus: int | None
             Omit this to make it random.
         attack_bonus: int | None
             Omit this to make it random.
         """
+
         # the transformers triggered a response, meaning user tried an incorrect input
         if interaction.response.is_done():
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
 
         player, created = await Player.get_or_create(discord_id=user.id)
-        instance = await BallInstance.create(
-            ball=countryball,
-            player=player,
-            attack_bonus=(
-                attack_bonus
-                if attack_bonus is not None
-                else random.randint(-settings.max_attack_bonus, settings.max_attack_bonus)
-            ),
-            health_bonus=(
-                health_bonus
-                if health_bonus is not None
-                else random.randint(-settings.max_health_bonus, settings.max_health_bonus)
-            ),
-            special=special,
-        )
-        await interaction.followup.send(
-            f"`{countryball.country}` {settings.collectible_name} was successfully given to "
-            f"`{user}`.\nSpecial: `{special.name if special else None}` • ATK: "
-            f"`{instance.attack_bonus:+d}` • HP:`{instance.health_bonus:+d}` "
-        )
-        await log_action(
-            f"{interaction.user} gave {settings.collectible_name} "
-            f"{countryball.country} to {user}. (Special={special.name if special else None} "
-            f"ATK={instance.attack_bonus:+d} HP={instance.health_bonus:+d}).",
-            interaction.client,
-        )
+        instances = []
+        for _ in range(amount):
+            instance = await BallInstance.create(
+                ball=countryball,
+                player=player,
+                attack_bonus=(
+                    attack_bonus
+                    if attack_bonus is not None
+                    else random.randint(-settings.max_attack_bonus, settings.max_attack_bonus)
+                ),
+                health_bonus=(
+                    health_bonus
+                    if health_bonus is not None
+                    else random.randint(-settings.max_health_bonus, settings.max_health_bonus)
+                ),
+                special=special,
+            )
+            instances.append(instance)
+
+        if amount == 1:
+            await interaction.followup.send(
+                f"`{countryball.country}` {settings.collectible_name} was successfully given to "
+                f"`{user}`.\nSpecial: `{special.name if special else None}` • ATK: "
+                f"`{instances[0].attack_bonus:+d}` • HP:`{instances[0].health_bonus:+d}` "
+            )
+        else:
+            followup_header = (
+                f"`{countryball.country}` {settings.collectible_name}s were successfully given to "
+                f"`{user}` ({amount} total):"
+            )
+            followup_lines = [
+                f"{i+1}. (Special: `{special.name if special else None}`, ATK: `{inst.attack_bonus:+d}`, HP: `{inst.health_bonus:+d}`)"
+                for i, inst in enumerate(instances)
+            ]
+            await interaction.followup.send(followup_header + "\n" + "\n".join(followup_lines))
+
+        header = f"{interaction.user} gave {amount} {countryball.country}{'\'s' if amount > 1 else ''} to {user}."
+
+        if amount == 1:
+            inst = instances[0]
+            log_message = (
+                f"{interaction.user} gave map {countryball.country} "
+                f"(Special={special.name if special else None} ATK={inst.attack_bonus:+d} HP={inst.health_bonus:+d}) to {user}"
+            )
+        else:
+            header = f"{interaction.user} gave {amount} {countryball.country}'s to {user}."
+            modifier_lines = [
+                f"{i+1}. (Special={special.name if special else None} ATK={inst.attack_bonus:+d} HP={inst.health_bonus:+d})"
+                for i, inst in enumerate(instances)
+            ]
+            log_message = header + "\n" + "\n".join(modifier_lines)
+
+        await log_action(log_message, interaction.client)
 
     @app_commands.command(name="info")
     @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
@@ -504,7 +535,7 @@ class Balls(app_commands.Group):
         )
 
     @app_commands.command(name="count")
-    @app_commands.checks.has_any_role(*settings.root_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
     async def balls_count(
         self,
         interaction: discord.Interaction[BallsDexBot],
@@ -560,45 +591,57 @@ class Balls(app_commands.Group):
         *,
         name: app_commands.Range[str, None, 48],
         regime: RegimeTransform,
+        economy: EconomyTransform,
         health: int,
         attack: int,
         emoji_id: app_commands.Range[str, 17, 21],
         capacity_name: app_commands.Range[str, None, 64],
         capacity_description: app_commands.Range[str, None, 256],
+        wild_card: discord.Attachment,
         collection_card: discord.Attachment,
         image_credits: str,
-        economy: EconomyTransform | None = None,
         rarity: float = 0.0,
         enabled: bool = False,
         tradeable: bool = False,
-        wild_card: discord.Attachment | None = None,
     ):
         """
-        Shortcut command for creating countryballs. They are disabled by default.
+        Admin command for creating countryballs. They are disabled by default.
 
         Parameters
         ----------
         name: str
+            Name to be used for this countryball
         regime: Regime
-        economy: Economy | None
+            Regime to be used for this countryball
+        economy: Economy
+            Economy to be used for this countryball
         health: int
+            Health to be used for this countryball
         attack: int
+            Attack to be used for this countryball
         emoji_id: str
             An emoji ID, the bot will check if it can access the custom emote
         capacity_name: str
+            Title of the countryball capacity
         capacity_description: str
+            Description of the countryball capacity
+        wild_card: discord.Attachment
+            Artwork used when a countryball spawns
         collection_card: discord.Attachment
+            Artwork used when viewing a countryball
         image_credits: str
+            Author of the artwork
         rarity: float
             Value defining the rarity of this countryball, if enabled
         enabled: bool
             If true, the countryball can spawn and will show up in global completion
         tradeable: bool
             If false, all instances are untradeable
-        wild_card: discord.Attachment
-            Artwork used to spawn the countryball, with a default
         """
-        if regime is None or interaction.response.is_done():  # economy autocomplete failed
+        if regime is None or interaction.response.is_done():  # regime autocomplete failed
+            return
+
+        if economy is None or interaction.response.is_done():  # economy autocomplete failed
             return
 
         if not emoji_id.isnumeric():
@@ -614,17 +657,8 @@ class Balls(app_commands.Group):
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
 
-        default_path = Path("./ballsdex/core/image_generator/src/default.png")
-        missing_default = ""
-        if not wild_card and not default_path.exists():
-            missing_default = (
-                "**Warning:** The default spawn image is not set. This will result in errors when "
-                f"attempting to spawn this {settings.collectible_name}. You can edit this on the "
-                "web panel or add an image at `./ballsdex/core/image_generator/src/default.png`.\n"
-            )
-
         try:
-            collection_card_path = await save_file(collection_card)
+            wild_card_path = await save_file(wild_card)
         except Exception as e:
             log.exception("Failed saving file when creating countryball", exc_info=True)
             await interaction.followup.send(
@@ -634,7 +668,7 @@ class Balls(app_commands.Group):
             )
             return
         try:
-            wild_card_path = await save_file(wild_card) if wild_card else default_path
+            collection_card_path = await save_file(collection_card)
         except Exception as e:
             log.exception("Failed saving file when creating countryball", exc_info=True)
             await interaction.followup.send(
@@ -669,9 +703,7 @@ class Balls(app_commands.Group):
                 "The full error is in the bot logs."
             )
         else:
-            files = [await collection_card.to_file()]
-            if wild_card:
-                files.append(await wild_card.to_file())
+            files = [await wild_card.to_file(), await collection_card.to_file()]
             await interaction.client.load_cache()
             admin_url = (
                 f"[View online](<{settings.admin_url}/bd_models/ball/{ball.pk}/change/>)\n"
@@ -681,9 +713,9 @@ class Balls(app_commands.Group):
             await interaction.followup.send(
                 f"Successfully created a {settings.collectible_name} with ID {ball.pk}! "
                 f"The internal cache was reloaded.\n{admin_url}"
-                f"{missing_default}\n"
-                f"{name=} regime={regime.name} economy={economy.name if economy else None} "
+                "\n"
+                f"{name=} regime={regime.name} economy={economy.name} "
                 f"{health=} {attack=} {rarity=} {enabled=} {tradeable=} emoji={emoji}",
                 files=files,
             )
-            log.info(f'{interaction.user} has created the {settings.collectible_name} "{name}"')
+            await log_action(f'{interaction.user} created the {settings.collectible_name} "{name}"', interaction.client)

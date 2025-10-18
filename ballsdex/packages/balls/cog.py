@@ -882,6 +882,96 @@ class Balls(commands.GroupCog, group_name=settings.players_group_cog_name):
         await pages.start()
 
     @app_commands.command()
+    @app_commands.checks.cooldown(1, 20, key=lambda i: i.user.id)
+    async def leaderboard(
+            self,
+            interaction: discord.Interaction["BallsDexBot"]
+        ):
+        """
+        Show the leaderboard of users with the most caught countryballs.
+        """
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        players = await Player.annotate(ball_count=Count("balls")).order_by("-ball_count").limit(10)
+
+        if not players:
+            await interaction.followup.send("No players found.", ephemeral=True)
+            return
+
+        entries = []
+        for i, player in enumerate(players):
+            user = self.bot.get_user(player.discord_id)
+            if user is None:
+                user = await self.bot.fetch_user(player.discord_id)
+            entries.append((f"{i + 1}. {user.name}", f"Balls: {player.ball_count}"))
+
+        source = FieldPageSource(entries, per_page=5, inline=False)
+        source.embed.title = "Top 10 players"
+        source.embed.color = discord.Color.gold()
+        source.embed.set_thumbnail(url=interaction.user.display_avatar.url)
+
+        pages = Pages(source=source, interaction=interaction)
+        await pages.start(ephemeral=True)
+
+    @app_commands.command()
+    @app_commands.checks.cooldown(1, 20, key=lambda i: i.user.id)
+    async def rarity(
+        self,
+        interaction: discord.Interaction["BallsDexBot"],
+        reverse: bool = False,
+    ):
+        """
+        Show the rarity list of the collectibles
+
+        Parameters
+        ----------
+        reverse: bool
+            Whether to show the rarity list in reverse
+        """
+
+        enabled_collectibles = [x for x in balls.values() if x.enabled]
+
+        if not enabled_collectibles:
+            await interaction.response.send_message(
+                f"There are no collectibles registered in {settings.bot_name} yet.",
+                ephemeral=True,
+            )
+            return
+
+        rarity_to_collectibles = {}
+        for collectible in enabled_collectibles:
+            rarity_to_collectibles.setdefault(collectible.rarity, []).append(collectible)
+
+        sorted_rarities = sorted(rarity_to_collectibles.keys(), reverse=reverse)
+
+        entries = []
+
+        total_rarities = len(sorted_rarities)
+
+        if reverse:
+            rarity_index = total_rarities
+            step = -1
+        else:
+            rarity_index = 1
+            step = 1
+
+        for rarity in sorted_rarities:
+            collectibles = rarity_to_collectibles[rarity]
+            chunk = collectibles
+
+            collectible_names = "\n".join(
+                [f"\u200b ⋄ {self.bot.get_emoji(c.emoji_id) or 'N/A'} {c.country}" for c in chunk]
+            )
+
+            entries.append((f"∥ T{rarity_index}", collectible_names))
+            rarity_index += step
+
+        source = FieldPageSource(entries, per_page=2, inline=False, clear_description=False)
+        source.embed.title = f"{settings.bot_name} Rarity List"
+        pages = Pages(source=source, interaction=interaction, compact=False)
+        await pages.start()
+
+    @app_commands.command()
     async def collection(
         self,
         interaction: discord.Interaction["BallsDexBot"],

@@ -9,3 +9,5 @@ ALLOWED_CIDR_NETS = [
     "172.16.0.0/12",
     "192.168.0.0/16",
 ]
+
+INSTALLED_APPS.append("craftings")

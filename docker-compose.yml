@@ -26,7 +26,7 @@ services:
       - "./:/code"
     tty: true
     working_dir: /code/
-    command: python3 -m ballsdex
+    command: python3 -m ballsdex --dev
 
   admin-panel:
     image: ballsdex

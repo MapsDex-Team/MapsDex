@@ -104,7 +104,7 @@ class History(app_commands.Group):
         await pages.start(ephemeral=True)
 
     @app_commands.command(name="countryball")
-    @app_commands.checks.has_any_role(*settings.root_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
     @app_commands.choices(
         sorting=[
             app_commands.Choice(name="Most Recent", value="-date"),
@@ -181,7 +181,7 @@ class History(app_commands.Group):
         await pages.start(ephemeral=True)
 
     @app_commands.command(name="trade")
-    @app_commands.checks.has_any_role(*settings.root_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
     async def trade_info(
         self,
         interaction: discord.Interaction["BallsDexBot"],
