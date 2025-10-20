@@ -884,13 +884,13 @@ class Balls(commands.GroupCog, group_name=settings.players_group_cog_name):
     @app_commands.command()
     @app_commands.checks.cooldown(1, 20, key=lambda i: i.user.id)
     async def leaderboard(
-            self,
-            interaction: discord.Interaction["BallsDexBot"]
-        ):
+        self,
+        interaction: discord.Interaction["BallsDexBot"],
+    ):
         """
         Show the leaderboard of users with the most caught countryballs.
         """
-        await interaction.response.defer(ephemeral=True, thinking=True)
+        await interaction.response.defer(thinking=True)
 
         players = await Player.annotate(ball_count=Count("balls")).order_by("-ball_count").limit(10)
 
@@ -908,27 +908,19 @@ class Balls(commands.GroupCog, group_name=settings.players_group_cog_name):
         source = FieldPageSource(entries, per_page=5, inline=False)
         source.embed.title = "Top 10 players"
         source.embed.color = discord.Color.blurple()
-        source.embed.set_thumbnail(url=interaction.user.display_avatar.url)
 
         pages = Pages(source=source, interaction=interaction)
-        await pages.start(ephemeral=True)
+        await pages.start()
 
     @app_commands.command()
     @app_commands.checks.cooldown(1, 20, key=lambda i: i.user.id)
     async def rarity(
         self,
         interaction: discord.Interaction["BallsDexBot"],
-        reverse: bool = False,
     ):
         """
         Show the rarity list of the collectibles
-
-        Parameters
-        ----------
-        reverse: bool
-            Whether to show the rarity list in reverse
         """
-
         enabled_collectibles = [x for x in balls.values() if x.enabled]
 
         if not enabled_collectibles:
@@ -942,7 +934,7 @@ class Balls(commands.GroupCog, group_name=settings.players_group_cog_name):
         for collectible in enabled_collectibles:
             rarity_to_collectibles.setdefault(collectible.rarity, []).append(collectible)
 
-        sorted_rarities = sorted(rarity_to_collectibles.keys(), reverse=reverse)
+        sorted_rarities = sorted(rarity_to_collectibles.keys())
 
         entries = []
 
@@ -976,7 +968,6 @@ class Balls(commands.GroupCog, group_name=settings.players_group_cog_name):
         self,
         interaction: discord.Interaction["BallsDexBot"],
         countryball: BallEnabledTransform | None = None,
-        ephemeral: bool = False,
     ):
         """
         Show the collection of a specific countryball.
@@ -985,10 +976,8 @@ class Balls(commands.GroupCog, group_name=settings.players_group_cog_name):
         ----------
         countryball: Ball
             The countryball you want to see the collection of
-        ephemeral: bool
-            Whether or not to send the command ephemerally.
         """
-        await interaction.response.defer(thinking=True, ephemeral=ephemeral)
+        await interaction.response.defer(thinking=True)
         player, _ = await Player.get_or_create(discord_id=interaction.user.id)
 
         query = (
