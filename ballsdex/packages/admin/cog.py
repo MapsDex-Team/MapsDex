@@ -6,140 +6,6 @@ from discord import app_commands
 from discord.ext import commands
 from discord.ui import Button
 
-from ballsdex.core.models import Ball, GuildConfig
-from ballsdex.core.utils.paginator import FieldPageSource, Pages, TextPageSource
-from ballsdex.settings import settings
-
-from .balls import Balls as BallsGroup
-from .blacklist import Blacklist as BlacklistGroup
-from .blacklist import BlacklistGuild as BlacklistGuildGroup
-from .history import History as HistoryGroup
-from .info import Info as InfoGroup
-from .logs import Logs as LogsGroup
-
-if TYPE_CHECKING:
-    from ballsdex.core.bot import BallsDexBot
-    from ballsdex.packages.countryballs.cog import CountryBallsSpawner
-    from ballsdex.packages.trade.cog import Trade
-
-
-@app_commands.guilds(*settings.admin_guild_ids)
-@app_commands.default_permissions(administrator=True)
-class Admin(commands.GroupCog):
-    """
-    Bot admin commands.
-    """
-
-    def __init__(self, bot: "BallsDexBot"):
-        self.bot = bot
-
-        assert self.__cog_app_commands_group__
-        self.__cog_app_commands_group__.add_command(
-            BallsGroup(name=settings.players_group_cog_name)
-        )
-        self.__cog_app_commands_group__.add_command(BlacklistGroup())
-        self.__cog_app_commands_group__.add_command(BlacklistGuildGroup())
-        self.__cog_app_commands_group__.add_command(HistoryGroup())
-        self.__cog_app_commands_group__.add_command(LogsGroup())
-        self.__cog_app_commands_group__.add_command(InfoGroup())
-
-    @app_commands.command()
-    @app_commands.checks.has_any_role(*settings.root_role_ids)
-    async def status(
-        self,
-        interaction: discord.Interaction["BallsDexBot"],
-        status: discord.Status | None = None,
-        name: str | None = None,
-        state: str | None = None,
-        activity_type: discord.ActivityType | None = None,
-    ):
-        """
-        Change the status of the bot. Provide at least status or text.
-
-        Parameters
-        ----------
-        status: discord.Status
-            The status you want to set
-        name: str
-            Title of the activity, if not custom
-        state: str
-            Custom status or subtitle of the activity
-        activity_type: discord.ActivityType
-            The type of activity
-        """
-        if not status and not name and not state:
-            await interaction.response.send_message(
-                "You must provide at least `status`, `name` or `state`.", ephemeral=True
-            )
-            return
-
-        activity: discord.Activity | None = None
-        status = status or discord.Status.online
-        activity_type = activity_type or discord.ActivityType.custom
-
-        if activity_type == discord.ActivityType.custom and name and not state:
-            await interaction.response.send_message(
-                "You must provide `state` for custom activities. `name` is unused.", ephemeral=True
-            )
-            return
-        if activity_type != discord.ActivityType.custom and not name:
-            await interaction.response.send_message(
-                "You must provide `name` for pre-defined activities.", ephemeral=True
-            )
-            return
-        if name or state:
-            activity = discord.Activity(name=name or state, state=state, type=activity_type)
-        await self.bot.change_presence(status=status, activity=activity)
-        await interaction.response.send_message("Status updated.", ephemeral=True)
-
-    @app_commands.command()
-    @app_commands.checks.has_any_role(*settings.root_role_ids)
-    async def trade_lockdown(
-        self, interaction: discord.Interaction["BallsDexBot"], *, reason: str
-    ):
-        """
-        Cancel all ongoing trades and lock down further trades from being started.
-
-        Parameters
-        ----------
-        reason: str
-            The reason of the lockdown. This will be displayed to all trading users.
-        """
-        cog = cast("Trade | None", self.bot.get_cog("Trade"))
-        if not cog:
-            await interaction.response.send_message("The trade cog is not loaded.", ephemeral=True)
-            return
-
-        await interaction.response.defer(thinking=True)
-        result = await cog.cancel_all_trades(reason)
-
-        assert self.bot.user
-        prefix = (
-            settings.prefix if self.bot.intents.message_content else f"{self.bot.user.mention} "
-        )
-
-        if not result:
-            await interaction.followup.send(
-                "All trades were successfully cancelled, and further trades cannot be started "
-                f'anymore.\nTo enable trades again, the bot owner must use the "{prefix}reload '
-                'trade" command.'
-            )
-        else:
-            await interaction.followup.send(
-                "Lockdown mode enabled, trades can no longer be started. "
-                f"While cancelling ongoing trades, {len(result)} failed to cancel, check your "
-                "logs for info.\nTo enable trades again, the bot owner must use the "
-                f'"{prefix}reload trade" command.'
-            )
-
-from collections import defaultdict
-from typing import TYPE_CHECKING, cast
-
-import discord
-from discord import app_commands
-from discord.ext import commands
-from discord.ui import Button
-
 from ballsdex.core.models import Ball, GuildConfig, balls
 from ballsdex.core.utils.paginator import FieldPageSource, Pages, TextPageSource
 from ballsdex.settings import settings
@@ -271,62 +137,40 @@ class Admin(commands.GroupCog):
     async def rarity(
         self,
         interaction: discord.Interaction["BallsDexBot"],
-        reverse: bool = False,
         include_disabled: bool = False,
     ):
         """
-        Show the rarity list of the collectibles
+        Generate a list of countryballs ranked by rarity.
 
         Parameters
         ----------
-        reverse: bool
-            Whether to show the rarity list in reverse
+        include_disabled: bool
+            Include the countryballs that are disabled or with a rarity of 0.
         """
+        text = ""
+        balls_queryset = Ball.all().order_by("rarity")
+        if not include_disabled:
+            balls_queryset = balls_queryset.filter(rarity__gt=0, enabled=True)
+        sorted_balls = await balls_queryset  # ordered by rarity ascending
+        
+        groups = defaultdict(list)  # preserves insertion order on iteration
+        for ball in sorted_balls:
+            groups[ball.rarity].append(ball)
 
-        if include_disabled:
-            enabled_collectibles = [x for x in balls.values()]
-        else:
-            enabled_collectibles = [x for x in balls.values() if x.enabled]
+        tier = 1
+        lines = []
+        for _, chunk in groups.items():  # iterates in first-seen rarity order
+            lines.append(f"T{tier}:")
+            for b in chunk:
+                lines.append(f"{b.country}")  # no numbering
+            lines.append("")
+            tier += 1
+        text = "\n".join(lines).rstrip()
 
-        if not enabled_collectibles:
-            await interaction.response.send_message(
-                f"There are no collectibles registered in {settings.bot_name} yet.",
-                ephemeral=True,
-            )
-            return
-
-        rarity_to_collectibles = {}
-        for collectible in enabled_collectibles:
-            rarity_to_collectibles.setdefault(collectible.rarity, []).append(collectible)
-
-        sorted_rarities = sorted(rarity_to_collectibles.keys(), reverse=reverse)
-
-        entries = []
-
-        total_rarities = len(sorted_rarities)
-
-        if reverse:
-            rarity_index = total_rarities
-            step = -1
-        else:
-            rarity_index = 1
-            step = 1
-
-        for rarity in sorted_rarities:
-            collectibles = rarity_to_collectibles[rarity]
-            chunk = collectibles
-
-            collectible_names = "\n".join(
-                [f"\u200b ⋄ {self.bot.get_emoji(c.emoji_id) or 'N/A'} {c.country}" for c in chunk]
-            )
-
-            entries.append((f"∥ T{rarity_index}", collectible_names))
-            rarity_index += step
-
-        source = FieldPageSource(entries, inline=False, clear_description=False)
-        source.embed.title = f"{settings.bot_name} Rarity List"
-        pages = Pages(source=source, interaction=interaction, compact=False)
-        await pages.start()
+        source = TextPageSource(text, prefix="```md\n", suffix="```")
+        pages = Pages(source=source, interaction=interaction, compact=True)
+        pages.remove_item(pages.stop_pages)
+        await pages.start(ephemeral=True)
 
     @app_commands.command()
     @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
