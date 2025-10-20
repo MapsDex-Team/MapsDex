@@ -907,7 +907,7 @@ class Balls(commands.GroupCog, group_name=settings.players_group_cog_name):
 
         source = FieldPageSource(entries, per_page=5, inline=False)
         source.embed.title = "Top 10 players"
-        source.embed.color = discord.Color.gold()
+        source.embed.color = discord.Color.blurple()
         source.embed.set_thumbnail(url=interaction.user.display_avatar.url)
 
         pages = Pages(source=source, interaction=interaction)
