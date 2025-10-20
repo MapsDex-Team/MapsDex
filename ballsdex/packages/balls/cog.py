@@ -940,12 +940,8 @@ class Balls(commands.GroupCog, group_name=settings.players_group_cog_name):
 
         total_rarities = len(sorted_rarities)
 
-        if reverse:
-            rarity_index = total_rarities
-            step = -1
-        else:
-            rarity_index = 1
-            step = 1
+        rarity_index = 1
+        step = 1
 
         for rarity in sorted_rarities:
             collectibles = rarity_to_collectibles[rarity]
