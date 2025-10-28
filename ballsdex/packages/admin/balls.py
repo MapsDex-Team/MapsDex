@@ -601,7 +601,6 @@ class Balls(app_commands.Group):
         wild_card: discord.Attachment,
         collection_card: discord.Attachment,
         image_credits: str,
-        rarity: float = 0.0,
         enabled: bool = False,
         tradeable: bool = False,
     ):
@@ -632,8 +631,6 @@ class Balls(app_commands.Group):
             Artwork used when viewing a countryball
         image_credits: str
             Author of the artwork
-        rarity: float
-            Value defining the rarity of this countryball, if enabled
         enabled: bool
             If true, the countryball can spawn and will show up in global completion
         tradeable: bool
@@ -678,6 +675,8 @@ class Balls(app_commands.Group):
                 "The full error is in the bot logs."
             )
             return
+
+        rarity = max(round(10 * (1 - ((health / 5000 + attack / 5000) / 2)), 1), 0.1)
 
         try:
             ball = await Ball.create(
