@@ -582,7 +582,7 @@ class Balls(app_commands.Group):
                 f"There {verb} {balls} {special_str}"
                 f"{country}{settings.collectible_name}{plural}."
             )
-        await log_action(f'{interaction.user} counted {settings.collectible_name} cirulation', interaction.client)
+        await log_action(f'{interaction.user} counted {settings.collectible_name} circulation', interaction.client)
 
     @app_commands.command(name="create")
     @app_commands.checks.has_any_role(*settings.root_role_ids)
