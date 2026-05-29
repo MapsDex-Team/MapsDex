@@ -22,9 +22,12 @@ class PlayerInfoView(discord.ui.View):
     @discord.ui.button(label="Recent Catches", style=discord.ButtonStyle.primary)
     async def recently_caught(self, interaction: discord.Interaction, button: discord.ui.Button):
         # Display the last 10 catches of the user, and how long it took for each catch
-        recent_balls = await BallInstance.objects.filter(
-            player=self.player, spawned_time__isnull=False, trade_player=None
-        ).select_related("ball").order_by("-catch_date")[:10].aall()
+        recent_balls = (
+            await BallInstance.objects.filter(player=self.player, spawned_time__isnull=False, trade_player=None)
+            .select_related("ball")
+            .order_by("-catch_date")[:10]
+            .aall()
+        )
         embed = discord.Embed(title=f"Last {len(recent_balls)} catches for {self.username}")
         for ball in recent_balls:
             catch_time = (ball.catch_date - ball.spawned_time).total_seconds()  # type: ignore
