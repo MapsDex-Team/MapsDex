@@ -14,6 +14,7 @@ from ballsdex.core.utils.menus import ChunkedListSource, Menu, SelectFormatter, 
 from ballsdex.core.utils.sorting import FilteringChoices, SortingChoices, filter_balls, sort_balls
 from ballsdex.core.utils.transformers import (
     BallTransform,
+    BallEnabledTransform,
     BallInstanceTransform,
     EconomyTransform,
     RegimeTransform,
