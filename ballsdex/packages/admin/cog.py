@@ -1,5 +1,4 @@
 import logging
-from collections import defaultdict
 from typing import TYPE_CHECKING, cast
 
 import discord
@@ -26,7 +25,7 @@ from settings.models import settings
 from .balls import balls as balls_group
 from .blacklist import blacklist as blacklist_group
 from .blacklist import blacklistguild as blacklist_guild_group
-from .flags import RarityFlags, StatusFlags
+from .flags import StatusFlags
 from .history import history as history_group
 from .info import info as info_group
 from .logs import logs as logs_group
@@ -234,38 +233,6 @@ class Admin(commands.Cog):
             )
 
     @admin.command()
-    @checks.has_permissions("bd_models.view_ball")
-    async def rarity(self, ctx: commands.Context["BallsDexBot"], *, flags: RarityFlags):
-        """
-        Generate a list of countryballs ranked by rarity.
-        """
-        text = ""
-        balls_queryset = Ball.objects.all().order_by("rarity")
-        if not flags.include_disabled:
-            balls_queryset = balls_queryset.filter(rarity__gt=0, enabled=True)
-        sorted_balls = [x async for x in balls_queryset]
-
-        if flags.chunked:
-            indexes: dict[float, list[Ball]] = defaultdict(list)
-            for ball in sorted_balls:
-                indexes[ball.rarity].append(ball)
-            i = 1
-            for chunk in indexes.values():
-                for ball in chunk:
-                    text += f"{i}. {ball.country}\n"
-                i += len(chunk)
-        else:
-            for i, ball in enumerate(sorted_balls, start=1):
-                text += f"{i}. {ball.country}\n"
-
-        view = discord.ui.LayoutView()
-        text_display = discord.ui.TextDisplay("")
-        view.add_item(text_display)
-        menu = Menu(self.bot, view, TextSource(text, prefix="```md\n", suffix="```"), TextFormatter(text_display))
-        await menu.init()
-        await ctx.send(view=view)
-
-    @admin.command()
     @checks.is_superuser()
     async def cooldown(self, ctx: commands.Context["BallsDexBot"], guild_id: str | None = None):
         """
@@ -334,7 +301,7 @@ class Admin(commands.Cog):
                 text += f"- {guild.name}\n"
 
             # highlight low member count
-            if guild.member_count <= 3:  # type: ignore
+            if guild.member_count < 15:  # type: ignore
                 text += f"- :warning: **{guild.member_count} members**\n"
             else:
                 text += f"- {guild.member_count} members\n"
@@ -402,4 +369,71 @@ class Admin(commands.Cog):
                 "Avoid running the commands in a different server, this can lead to weird issues.\n"
                 f"To clear impersonation, run `{ctx.prefix}admin impersonate` again.",
                 ephemeral=True,
+            )
+
+    @admin.command()
+    @checks.is_superuser()
+    async def echo(
+        self,
+        ctx: commands.Context["BallsDexBot"],
+        message: str,
+        channel: discord.TextChannel | discord.Thread | discord.VoiceChannel | discord.StageChannel | None = None,
+        channel_id: int | None = None,
+    ):
+        """
+        Send a message as the bot to a specified channel.
+
+        Parameters
+        ----------
+        message: str
+            The message to send
+        channel: discord.TextChannel | discord.Thread | discord.VoiceChannel | discord.StageChannel | None
+            The channel to send the message to (use the picker). Defaults to current channel.
+        channel_id: int | None
+            Raw channel ID, for channels not visible in the picker.
+        """
+        target_channel = None
+
+        if isinstance(channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel, discord.StageChannel)):
+            target_channel = channel
+        elif channel_id is not None:
+            target_channel = self.bot.get_channel(channel_id)
+            if not target_channel:
+                try:
+                    target_channel = await self.bot.fetch_channel(channel_id)
+                except discord.NotFound:
+                    await ctx.send("The specified channel ID could not be found.", ephemeral=True)
+                    return
+                except discord.Forbidden:
+                    await ctx.send("I do not have permissions to access that channel.", ephemeral=True)
+                    return
+                except Exception as e:
+                    await ctx.send(f"An error occurred while fetching the channel: {e}", ephemeral=True)
+                    return
+        else:
+            target_channel = ctx.channel
+
+        # Verify it's a valid messageable channel/thread
+        if not isinstance(target_channel, (discord.TextChannel, discord.Thread, discord.VoiceChannel, discord.StageChannel)):
+            await ctx.send(
+                "Invalid channel type. Must be a text-based channel or thread.", ephemeral=True
+            )
+            return
+        
+        try:
+            await target_channel.send(message)
+            
+            # Get guild name safely
+            guild_name = target_channel.guild.name if hasattr(target_channel, "guild") else "Unknown"
+
+            await ctx.send(
+                f"Message sent to {target_channel.mention} ({guild_name})", ephemeral=True
+            )
+        except discord.Forbidden:
+            await ctx.send(
+                f"Missing permissions to send messages in {target_channel.mention}", ephemeral=True
+            )
+        except Exception as e:
+            await ctx.send(
+                f"Failed to send message: {str(e)}", ephemeral=True
             )
