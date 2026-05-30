@@ -124,7 +124,7 @@ class SpawnCooldown:
 
         async with self.lock:
             message_multiplier = 1
-            if message.guild.member_count < 5 or message.guild.member_count > 1000:  # type: ignore
+            if message.guild.member_count < 15 or message.guild.member_count > 1500:  # type: ignore
                 message_multiplier /= 2
             if message._state.intents.message_content and len(message.content) < 5:
                 message_multiplier /= 2
@@ -149,6 +149,17 @@ class SpawnManager(BaseSpawnManager):
         if not guild:
             return False
 
+        if self.bot.intents.members:
+            human_count = 0
+            async for member in guild.fetch_members(limit=None):
+                if not member.bot:
+                    human_count += 1
+        else:
+            human_count = guild.member_count or 0
+
+        if human_count < 15:
+            return False
+
         cooldown = self.cooldowns.get(guild.id, None)
         if not cooldown:
             cooldown = SpawnCooldown(message.created_at)
@@ -156,13 +167,11 @@ class SpawnManager(BaseSpawnManager):
 
         delta_t = (message.created_at - cooldown.time).total_seconds()
         # change how the threshold varies according to the member count, while nuking farm servers
-        if not guild.member_count:
-            return False
-        elif guild.member_count < 5:
+        if human_count < 15:
             time_multiplier = 0.1
-        elif guild.member_count < 100:
+        elif human_count < 150:
             time_multiplier = 0.8
-        elif guild.member_count < 1000:
+        elif human_count < 1500:
             time_multiplier = 0.5
         else:
             time_multiplier = 0.2
@@ -204,22 +213,22 @@ class SpawnManager(BaseSpawnManager):
             (ctx.interaction.created_at if ctx.interaction else ctx.message.created_at) - cooldown.time
         ).total_seconds()
         # change how the threshold varies according to the member count, while nuking farm servers
-        if guild.member_count < 5:
+        if guild.member_count < 15:
             multiplier = 0.1
-            range = "1-4"
-        elif guild.member_count < 100:
+            range = "1-14"
+        elif guild.member_count < 150:
             multiplier = 0.8
-            range = "5-99"
-        elif guild.member_count < 1000:
+            range = "15-149"
+        elif guild.member_count < 1500:
             multiplier = 0.5
-            range = "100-999"
+            range = "150-1499"
         else:
             multiplier = 0.2
-            range = "1000+"
+            range = "1500+"
 
         penalities: list[str] = []
-        if guild.member_count < 5 or guild.member_count > 1000:
-            penalities.append("Server has less than 5 or more than 1000 members")
+        if guild.member_count < 15 or guild.member_count > 1500:
+            penalities.append("Server has less than 15 or more than 1500 members")
         if any(len(x.content) < 5 for x in cooldown.message_cache):
             penalities.append("Some cached messages are less than 5 characters long")
 
@@ -227,11 +236,8 @@ class SpawnManager(BaseSpawnManager):
         low_chatters = len(authors_set) < 4
         # check if one author has more than 40% of messages in cache
         major_chatter = any(
-            (
-                len(list(filter(lambda x: x.author_id == author, cooldown.message_cache)))
-                / cooldown.message_cache.maxlen  # type: ignore
-                > 0.4
-            )
+            len(list(filter(lambda x: x.author_id == author, cooldown.message_cache)))
+            / cooldown.message_cache.maxlen > 0.4
             for author in authors_set
         )
         # this mess is needed since either conditions make up to a single penality
