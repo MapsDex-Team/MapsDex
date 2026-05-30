@@ -13,7 +13,7 @@ from ballsdex.core.utils.buttons import ConfirmChoiceView
 from ballsdex.core.utils.menus import ChunkedListSource, Menu, SelectFormatter, TextFormatter, TextSource
 from ballsdex.core.utils.sorting import FilteringChoices, SortingChoices, filter_balls, sort_balls
 from ballsdex.core.utils.transformers import (
-    BallEnabledTransform,
+    BallTransform,
     BallInstanceTransform,
     EconomyTransform,
     RegimeTransform,
@@ -116,7 +116,7 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
         user: discord.User | None = None,
         sort: SortingChoices | None = None,
         reverse: bool = False,
-        countryball: BallEnabledTransform | None = None,
+        countryball: BallTransform | None = None,
         special: SpecialEnabledTransform | None = None,
         filter: FilteringChoices | None = None,
     ):
