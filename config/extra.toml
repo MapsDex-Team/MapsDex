@@ -1,65 +1,65 @@
-# V2-Completion Package
-[[ballsdex.packages]]
-location = "git+https://github.com/hiboman/BallsDex-V2Completion-Pack.git"
-path = "v2_completion"
-enabled = true
-
-# Boss Package
-[[ballsdex.packages]]
-location = "git+https://github.com/hiboman/BallsDex-Boss-Pack.git"
-path = "boss"
-enabled = true
-
-# Battle Package
-[[ballsdex.packages]]
-location = "git+https://github.com/hiboman/BallsDex-Battle-Pack.git@0.0.1#master"
-path = "battle"
-enabled = true
-
-# Crafting Package
-[[ballsdex.packages]]
-location = "git+https://github.com/hiboman/BallsDex-Crafting-Pack.git@patch-1"
-path = "crafting"
-enabled = true
-
-# Reward Package
-[[ballsdex.packages]]
-location = "git+https://github.com/hiboman/BallsDex-Reward-Pack.git"
-path = "reward"
-enabled = true
-
-# Collector Package
-[[ballsdex.packages]]
-location = "git+https://github.com/hiboman/BallsDex-Collector-Pack.git"
-path = "collector"
-enabled = true
-
 # Rarity Package
 [[ballsdex.packages]]
-location = "git+https://github.com/hiboman/BallsDex-Rarity-Pack.git@0.0.4#master"
+location = "git+https://github.com/MapsDex-Team/BallsDex-Rarity-Pack.git@0.0.4#master"
 path = "rarity"
 enabled = true
 
 # Leaderboard Package
 [[ballsdex.packages]]
-location = "git+https://github.com/hiboman/BallsDex-Leaderboard-Pack.git@0.0.1#master"
+location = "git+https://github.com/MapsDex-Team/BallsDex-Leaderboard-Pack.git@0.0.1#master"
 path = "leaderboard"
+enabled = true
+
+# Battle Package
+[[ballsdex.packages]]
+location = "git+https://github.com/MapsDex-Team/BallsDex-Battle-Pack.git@0.0.1#master"
+path = "battle"
+enabled = true
+
+# Boss Package
+[[ballsdex.packages]]
+location = "git+https://github.com/MapsDex-Team/BallsDex-Boss-Pack.git"
+path = "boss"
+enabled = true
+
+# Crafting Package
+[[ballsdex.packages]]
+location = "git+https://github.com/MapsDex-Team/BallsDex-Crafting-Pack.git@patch-1"
+path = "crafting"
+enabled = true
+
+# Reward Package
+[[ballsdex.packages]]
+location = "git+https://github.com/faye69/BallsDex-Reward-Pack.git"
+path = "reward"
+enabled = true
+
+# Collector Package
+[[ballsdex.packages]]
+location = "git+https://github.com/faye69/BallsDex-Collector-Pack.git"
+path = "collector"
 enabled = true
 
 # Report Package
 [[ballsdex.packages]]
-location = "git+https://github.com/hiboman/BallsDex-Report-Pack.git"
+location = "git+https://github.com/Ray-Hsueh/BallsDex-Report-Pack.git"
 path = "report"
 enabled = true
 
 # Broadcast Package
 [[ballsdex.packages]]
-location = "git+https://github.com/hiboman/BallsDex-Broadcast-Pack.git"
+location = "git+https://github.com/Ray-Hsueh/BallsDex-Broadcast-Pack.git"
 path = "broadcast"
 enabled = true
 
 # Font-Changer Package
 [[ballsdex.packages]]
-location = "git+https://github.com/hiboman/BallsDex-FontChanger-Pack.git"
+location = "git+https://github.com/dormieriancitizen/bd-fontchanger.git"
 path = "bd_fontchanger"
+enabled = true
+
+# V2-Completion Package
+[[ballsdex.packages]]
+location = "git+https://github.com/cewlgruyere/V2-Completion.git"
+path = "v2_completion"
 enabled = true
