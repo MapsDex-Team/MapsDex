@@ -60,6 +60,6 @@ enabled = true
 
 # V2-Completion Package
 [[ballsdex.packages]]
-location = "git+https://github.com/cewlgruyere/V2-Completion.git"
+location = "git+https://github.com/cewlgruyere/V2-Completion.git@v0.0.3"
 path = "v2_completion"
 enabled = true
