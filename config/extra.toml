@@ -18,7 +18,7 @@ enabled = true
 
 # Boss Package
 [[ballsdex.packages]]
-location = "git+https://github.com/MapsDex-Team/BallsDex-Boss-Pack.git"
+location = "git+https://github.com/MoOfficial0000/BossPackageBD.git"
 path = "boss"
 enabled = true
 
