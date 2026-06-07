@@ -63,3 +63,9 @@ enabled = true
 location = "git+https://github.com/cewlgruyere/V2-Completion.git@v0.0.3"
 path = "v2_completion"
 enabled = true
+
+# ReCollection Package
+[[ballsdex.packages]]
+location = "git+https://github.com/cewlgruyere/ReCol.git"
+path = "recol"
+enabled = true
