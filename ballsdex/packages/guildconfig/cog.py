@@ -48,24 +48,6 @@ class Config(commands.GroupCog):
         channel: discord.TextChannel
             The channel you want to set, current one if not specified.
         """
-        assert interaction.guild is not None
-        guild: discord.Guild = interaction.guild
-
-        if self.bot.intents.members:
-            human_count = 0
-            async for member in guild.fetch_members(limit=None):
-                if not member.bot:
-                    human_count += 1
-        else:
-            human_count = guild.member_count or 0
-
-        if human_count < 15:
-            await interaction.response.send_message(
-                "This server needs at least 15 human members.",
-                ephemeral=True
-            )
-            return
-
         user = cast(discord.Member, interaction.user)
 
         if channel is None:
@@ -80,6 +62,8 @@ class Config(commands.GroupCog):
         view = AcceptTOSView(interaction, channel, user)
         embed = activation_embed.copy()
 
+        guild = interaction.guild
+        assert guild
         if guild.unavailable:
             await interaction.response.send_message(
                 "The server is unavailable to the bot and will not work properly. "
