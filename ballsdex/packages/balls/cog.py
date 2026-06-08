@@ -958,11 +958,7 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
 
     @app_commands.command()
     @app_commands.checks.cooldown(1, 5, key=lambda i: i.user.id)
-    async def details(
-        self,
-        interaction: discord.Interaction["BallsDexBot"],
-        countryball: BallEnabledTransform,
-    ):
+    async def details(self, interaction: discord.Interaction["BallsDexBot"], countryball: BallEnabledTransform):
         """
         Display detailed statistics for a specific countryball.
 
@@ -994,7 +990,7 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
                 f"⋄ **Capacity Description:** {ball.capacity_description}\n"
                 f"⋄ **Image Credits:** {ball.credits}\n"
             ).replace("⋄", "⋄"),
-            color=discord.Color.blurple()
+            color=discord.Color.blurple(),
         )
 
         await interaction.followup.send(embed=embed)
