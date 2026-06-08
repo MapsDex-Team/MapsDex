@@ -69,3 +69,9 @@ enabled = true
 location = "git+https://github.com/cewlgruyere/ReCol.git"
 path = "recol"
 enabled = true
+
+# AntiFarm Package
+[[ballsdex.packages]]
+location = "git+https://github.com/MapsDex-Team/BallsDex-AntiFarm-Pack.git@0.0.1#master"
+path = "antifarm"
+enabled = true
