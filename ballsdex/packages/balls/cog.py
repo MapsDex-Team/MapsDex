@@ -986,8 +986,8 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
                 f"⋄ **Rarity:** {ball.rarity}\n"
                 f"⋄ **Attack:** {ball.attack}\n"
                 f"⋄ **Health:** {ball.health}\n"
-                f"⋄ **Capacity Name:** {ball.capacity_name}\n"
-                f"⋄ **Capacity Description:** {ball.capacity_description}\n"
+                f"⋄ **Area:** {ball.capacity_name} km²\n"
+                f"⋄ **Fact:** {ball.capacity_description}\n"
                 f"⋄ **Image Credits:** {ball.credits}\n"
             ).replace("⋄", "⋄"),
             color=discord.Color.blurple(),
