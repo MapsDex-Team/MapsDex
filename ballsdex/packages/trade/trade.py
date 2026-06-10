@@ -82,6 +82,9 @@ class SetMoneyModal(Modal, title="Set money offering"):
         except ValueError:
             await interaction.response.send_message("This number could not be parsed.", ephemeral=True)
             return
+        if proposal_amount < 0:
+            await interaction.response.send_message("Amount cannot be negative.", ephemeral=True)
+            return
         await self.trading_user.player.arefresh_from_db(fields=["money"])
         if not self.trading_user.player.can_afford(proposal_amount):
             await interaction.response.send_message("You cannot afford that amount.", ephemeral=True)
@@ -446,9 +449,9 @@ class TradeInstance(LayoutView):
         log.exception(f"Error in trade between {self.trader1} and {self.trader2}", exc_info=error)
         await self.cleanup()
         send = interaction.followup.send if interaction.response.is_done() else interaction.response.send_message
-        await send("An error occured, the trade will be cancelled.", ephemeral=True)
+        await send("An error occurred, the trade will be cancelled.", ephemeral=True)
         self.add_item(
-            TextDisplay("An error occured and the trade has been cancelled! Contact support if this persists.")
+            TextDisplay("An error occurred and the trade has been cancelled! Contact support if this persists.")
         )
         await self.message.edit(view=self)
 

@@ -781,7 +781,7 @@ async def balls_create(
             extra={"webhook": True},
         )
         await ctx.send(
-            f"An error occured while creating the {settings.collectible_name}. Check the error in bot logs.",
+            f"An error occurred while creating the {settings.collectible_name}. Check the error in bot logs.",
             ephemeral=True,
         )
         return
@@ -790,7 +790,7 @@ async def balls_create(
             f"Failed creating {settings.collectible_name} with admin command", exc_info=True, extra={"webhook": True}
         )
         await ctx.send(
-            f"An error occured while creating the {settings.collectible_name}. Check the error in bot logs.",
+            f"An error occurred while creating the {settings.collectible_name}. Check the error in bot logs.",
             ephemeral=True,
         )
         return
