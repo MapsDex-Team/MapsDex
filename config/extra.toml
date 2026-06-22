@@ -24,7 +24,7 @@ enabled = true
 
 # Crafting Package
 [[ballsdex.packages]]
-location = "git+https://github.com/MapsDex-Team/BallsDex-Crafting-Pack.git@patch-1"
+location = "git+https://github.com/Mitoooooooopo/Crafting-package-BD.git"
 path = "crafting"
 enabled = true
 
