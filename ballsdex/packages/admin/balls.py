@@ -8,10 +8,11 @@ from itertools import cycle
 from typing import TYPE_CHECKING, cast
 
 import discord
+from asgiref.sync import sync_to_async
 from discord.ext import commands
 from discord.utils import format_dt
 from django.core.files.base import ContentFile
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.urls import reverse
 
 from ballsdex.core.bot import BallsDexBot
@@ -20,10 +21,10 @@ from ballsdex.core.utils.buttons import ConfirmChoiceView
 from ballsdex.core.utils.transformers import SpecialTransform
 from bd_models.models import Ball, BallInstance, Player, Special, Trade, TradeObject, balls as countryballs
 from settings.models import settings
-
+from settings.utils import format_currency
 from ballsdex.core.utils.menus import Menu, TextFormatter, TextSource
 
-from .flags import BallsCountFlags, CreateFlags, GiveBallFlags, RarityFlags, SpawnFlags
+from .flags import BallsCountFlags, CreateFlags, GiveBallFlags, SpawnFlags, RarityFlags
 
 if TYPE_CHECKING:
     from ballsdex.packages.countryballs.cog import CountryBallsSpawner
@@ -331,6 +332,10 @@ async def balls_info(ctx: commands.Context[BallsDexBot], countryball_id: str):
     except BallInstance.DoesNotExist:
         await ctx.send(f"The {settings.collectible_name} ID you gave does not exist.", ephemeral=True)
         return
+    first_trade_object = (
+        await TradeObject.objects.filter(ballinstance=ball).select_related("player").order_by("trade__date").afirst()
+    )
+    first_owner = first_trade_object.player if first_trade_object else ball.player
     spawned_time = format_dt(ball.spawned_time, style="R") if ball.spawned_time else "N/A"
     catch_time = (
         (ball.catch_date - ball.spawned_time).total_seconds() if ball.catch_date and ball.spawned_time else "N/A"
@@ -339,6 +344,7 @@ async def balls_info(ctx: commands.Context[BallsDexBot], countryball_id: str):
     await ctx.send(
         f"**{settings.collectible_name.title()} ID:** {ball.pk}\n"
         f"**Player:** {ball.player}\n"
+        f"**First owner:** {first_owner}\n"
         f"**Name:** {ball.countryball}\n"
         f"**Attack:** {ball.attack}\n"
         f"**Attack bonus:** {ball.attack_bonus}\n"
@@ -375,10 +381,27 @@ async def balls_delete(ctx: commands.Context[BallsDexBot], countryball_id: str, 
         await ctx.send(f"The {settings.collectible_name} ID you gave is not valid.", ephemeral=True)
         return
     try:
-        ball = await BallInstance.all_objects.aget(id=ballIdConverted)
+        ball = await BallInstance.objects.prefetch_related("player").aget(id=ballIdConverted)
     except BallInstance.DoesNotExist:
         await ctx.send(f"The {settings.collectible_name} ID you gave does not exist.", ephemeral=True)
         return
+
+    owner = await ctx.bot.fetch_user(ball.player.discord_id)
+
+    method = "soft" if soft_delete else "hard"
+    view = ConfirmChoiceView(
+        ctx, accept_message=f"Confirmed, {method} deleting...", cancel_message="Request cancelled."
+    )
+    await ctx.send(
+        f"You are about to {method} delete {ball.description(include_emoji=True, bot=ctx.bot)} "
+        f"(ID: `{countryball_id}`) owned by `{owner}`. Are you sure?",
+        view=view,
+        ephemeral=True,
+    )
+    await view.wait()
+    if not view.value:
+        return
+
     if soft_delete:
         ball.deleted = True
         await ball.asave()
@@ -475,55 +498,22 @@ async def balls_transfer(
         )
         return
 
-    await ctx.defer(ephemeral=True)
+    original_owner = await ctx.bot.fetch_user(original_player.discord_id)
 
-    if percentage:
-        try:
-            player_1 = await Player.objects.aget(discord_id=user_1.id)
-        except Player.DoesNotExist:
-            await ctx.send(
-                f"{user_1} does not exist or has no {settings.plural_collectible_name}.", ephemeral=True
-            )
-            return
+    view = ConfirmChoiceView(ctx, accept_message="Confirmed, transferring...", cancel_message="Request cancelled.")
+    await ctx.send(
+        f"You are about to transfer {ball.description(include_emoji=True, bot=ctx.bot)} "
+        f"(ID: `{countryball_id}`) from `{original_owner}` to `{user}`. Are you sure?",
+        view=view,
+        ephemeral=True,
+    )
+    await view.wait()
+    if not view.value:
+        return
 
-        filters = {"player": player_1, "deleted": False}
-        if special:
-            filters["special"] = special
-
-        balls = [b async for b in BallInstance.objects.filter(**filters)]
-        if not balls:
-            special_text = f" with special {special.name}" if special else ""
-            await ctx.send(
-                f"{user_1} has no {settings.plural_collectible_name}{special_text} to transfer.", ephemeral=True
-            )
-            return
-
-        to_transfer = balls if percentage == 100 else random.sample(balls, int(len(balls) * (percentage / 100)))
-        if not to_transfer:
-            await ctx.send(
-                f"Percentage results in 0 {settings.plural_collectible_name} to transfer.", ephemeral=True
-            )
-            return
-
-        if users:
-            new_players = [(await Player.objects.aget_or_create(discord_id=uid))[0] for uid in pool_user_ids]
-        else:
-            player_2, _ = await Player.objects.aget_or_create(discord_id=user_2.id)
-            new_players = [player_2]
-
-        rot = cycle(new_players)
-
-        for ball in to_transfer:
-            if clean_balls:
-                await TradeObject.objects.filter(ballinstance_id=ball.id).adelete()
-                ball.trade_player_id = trade_player_db_id
-                ball.server_id = None
-                ball.favorite = False
-
-            ball.player = next(rot)
-            if users:
-                ball.favorite = False
-            await ball.asave()
+    player, _ = await Player.objects.aget_or_create(discord_id=user.id)
+    ball.player = player
+    await ball.asave()
 
         count = len(to_transfer)
         special_text = f" {special.name}" if special else ""
@@ -627,6 +617,174 @@ async def balls_transfer(
                 f"{ctx.author} transferred {count} {settings.plural_collectible_name} ({ball_list}) to {target_log}.",
                 extra={"webhook": True},
             )
+
+
+@balls.command(name="transferinv")
+@checks.has_permissions("bd_models.change_ballinstance")
+async def balls_transferinv(
+    ctx: commands.Context[BallsDexBot], source: discord.User, dest: discord.User, currency: bool = False
+):
+    """
+    Transfer the full inventory of a user to another.
+
+    Parameters
+    ----------
+    source: discord.User
+        The user whose inventory you want to transfer
+    dest: discord.User
+        The user who should receive the inventory
+    currency: bool
+        Whether the player's balance should also be transferred.
+    """
+    if source == dest:
+        await ctx.send("You specified the same source and destination.", ephemeral=True)
+        return
+    try:
+        source_player = await Player.objects.aget(discord_id=source.id)
+    except Player.DoesNotExist:
+        await ctx.send(f"User {source} does not have a player profile.", ephemeral=True)
+        return
+    qs = BallInstance.objects.filter(player=source_player)
+    balls_count = await qs.acount()
+    if balls_count == 0 and (not currency or source_player.money == 0):
+        await ctx.send(f"{source}'s inventory is empty.", ephemeral=True)
+        return
+
+    view = ConfirmChoiceView(ctx, accept_message="Confirmed, transferring...", cancel_message="Request cancelled.")
+    if currency:
+        text = (
+            f"Are you sure you want to transfer {balls_count} {settings.plural_collectible_name} and "
+            f"{format_currency(source_player.money)} from {source} to {dest}?"
+        )
+    else:
+        text = (
+            f"Are you sure you want to transfer {balls_count} {settings.plural_collectible_name} "
+            f"from {source} to {dest}?"
+        )
+    await ctx.send(text, view=view, ephemeral=True)
+    await view.wait()
+    if not view.value:
+        return
+
+    dest_player, _ = await Player.objects.aget_or_create(discord_id=dest.id)
+    transferred_money = source_player.money
+
+    @transaction.atomic
+    def perform_transfer():
+        trade = Trade.objects.create(
+            player1=source_player, player2=dest_player, player1_money=source_player.money if currency else 0
+        )
+        trade_objects: list[TradeObject] = []
+        for ball in qs:
+            trade_objects.append(TradeObject(trade=trade, ballinstance=ball, player=source_player))
+        TradeObject.objects.bulk_create(trade_objects)
+        updated = qs.update(player=dest_player, trade_player=source_player)
+        if currency:
+            dest_player.money += source_player.money
+            source_player.money = 0
+            dest_player.save(update_fields=("money",))
+            source_player.save(update_fields=("money",))
+        return updated
+
+    updated = await sync_to_async(perform_transfer)()
+
+    if currency:
+        text = (
+            f"{updated} {settings.plural_collectible_name} and {format_currency(transferred_money)} "
+            f"transferred from {source} to {dest}."
+        )
+    else:
+        text = f"{updated} {settings.plural_collectible_name} transferred from {source} to {dest}."
+    await ctx.send(text, ephemeral=True)
+    log.info(
+        f"{ctx.author} transferred inventory of {source} ({source.id}, {updated} {settings.plural_collectible_name}, "
+        f"{format_currency(transferred_money if currency else 0)}) to {dest} ({dest.id}).",
+        extra={"webhook": True},
+    )
+
+
+@balls.command(name="transferinv")
+@checks.has_permissions("bd_models.change_ballinstance")
+async def balls_transferinv(
+    ctx: commands.Context[BallsDexBot], source: discord.User, dest: discord.User, currency: bool = False
+):
+    """
+    Transfer the full inventory of a user to another.
+
+    Parameters
+    ----------
+    source: discord.User
+        The user whose inventory you want to transfer
+    dest: discord.User
+        The user who should receive the inventory
+    currency: bool
+        Whether the player's balance should also be transferred.
+    """
+    if source == dest:
+        await ctx.send("You specified the same source and destination.", ephemeral=True)
+        return
+    try:
+        source_player = await Player.objects.aget(discord_id=source.id)
+    except Player.DoesNotExist:
+        await ctx.send(f"User {source} does not have a player profile.", ephemeral=True)
+        return
+    qs = BallInstance.objects.filter(player=source_player)
+    balls_count = await qs.acount()
+    if balls_count == 0 and (not currency or source_player.money == 0):
+        await ctx.send(f"{source}'s inventory is empty.", ephemeral=True)
+        return
+
+    view = ConfirmChoiceView(ctx, accept_message="Confirmed, transferring...", cancel_message="Request cancelled.")
+    if currency:
+        text = (
+            f"Are you sure you want to transfer {balls_count} {settings.plural_collectible_name} and "
+            f"{format_currency(source_player.money)} from {source} to {dest}?"
+        )
+    else:
+        text = (
+            f"Are you sure you want to transfer {balls_count} {settings.plural_collectible_name} "
+            f"from {source} to {dest}?"
+        )
+    await ctx.send(text, view=view, ephemeral=True)
+    await view.wait()
+    if not view.value:
+        return
+
+    dest_player, _ = await Player.objects.aget_or_create(discord_id=dest.id)
+    transferred_money = source_player.money
+
+    @transaction.atomic
+    def perform_transfer():
+        trade = Trade.objects.create(
+            player1=source_player, player2=dest_player, player1_money=source_player.money if currency else 0
+        )
+        trade_objects: list[TradeObject] = []
+        for ball in qs:
+            trade_objects.append(TradeObject(trade=trade, ballinstance=ball, player=source_player))
+        TradeObject.objects.bulk_create(trade_objects)
+        updated = qs.update(player=dest_player, trade_player=source_player)
+        if currency:
+            dest_player.money += source_player.money
+            source_player.money = 0
+            dest_player.save(update_fields=("money",))
+            source_player.save(update_fields=("money",))
+        return updated
+
+    updated = await sync_to_async(perform_transfer)()
+
+    if currency:
+        text = (
+            f"{updated} {settings.plural_collectible_name} and {format_currency(transferred_money)} "
+            f"transferred from {source} to {dest}."
+        )
+    else:
+        text = f"{updated} {settings.plural_collectible_name} transferred from {source} to {dest}."
+    await ctx.send(text, ephemeral=True)
+    log.info(
+        f"{ctx.author} transferred inventory of {source} ({source.id}, {updated} {settings.plural_collectible_name}, "
+        f"{format_currency(transferred_money if currency else 0)}) to {dest} ({dest.id}).",
+        extra={"webhook": True},
+    )
 
 
 @balls.command(name="reset")
