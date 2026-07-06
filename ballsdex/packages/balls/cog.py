@@ -26,7 +26,7 @@ from ballsdex.core.utils.transformers import (
 )
 from ballsdex.core.utils.utils import can_mention, inventory_privacy, is_staff
 from bd_models.enums import DonationPolicy
-from bd_models.models import BallInstance, GuildConfig, Player, Special, Trade, TradeObject, balls, groups
+from bd_models.models import BallInstance, GuildConfig, Player, Special, Trade, TradeObject, Ball, balls, groups
 from settings.models import settings
 
 from .bulk_give_selector import BulkGiveSelector
