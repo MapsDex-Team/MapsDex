@@ -263,7 +263,7 @@ class Admin(commands.Cog):
         menu = Menu(self.bot, view, TextSource(text, prefix="```md\n", suffix="```"), TextFormatter(text_display))
         await menu.init()
         await ctx.send(view=view)
-    
+
     @admin.command()
     @checks.is_superuser()
     async def cooldown(self, ctx: commands.Context["BallsDexBot"], guild_id: str | None = None):
