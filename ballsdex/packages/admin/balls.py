@@ -15,7 +15,7 @@ from django.urls import reverse
 from ballsdex.core.bot import BallsDexBot
 from ballsdex.core.utils import checks
 from ballsdex.core.utils.buttons import ConfirmChoiceView
-from bd_models.models import Ball, BallInstance, Player, Special, Trade, TradeObject
+from bd_models.models import Ball, BallInstance, Player, Special, Trade, TradeObject, balls as countryballs
 from settings.models import settings
 from settings.utils import format_currency
 
@@ -803,40 +803,3 @@ async def balls_create(
             files=files,
         )
         log.info(f'{ctx.author} created a new {settings.collectible_name} "{ball.country}"', extra={"webhook": True})
-
-
-@balls.command()
-@checks.has_permissions("bd_models.view_ball")
-async def rarity(ctx: commands.Context["BallsDexBot"], *, flags: RarityFlags):
-    """
-    Generate a list of countryballs ranked by rarity.
-    """
-    text = ""
-    balls_queryset = Ball.objects.all().order_by("rarity")
-    if not flags.include_disabled:
-        balls_queryset = balls_queryset.filter(rarity__gt=0, enabled=True)
-    sorted_balls = [x async for x in balls_queryset]
-
-    if flags.chunked:
-        groups: dict[float, list[Ball]] = defaultdict(list)
-        for ball in sorted_balls:
-            groups[ball.rarity].append(ball)
-        tier = 1
-        lines = []
-        for chunk in groups.values():
-            lines.append(f"T{tier}:")
-            for ball in chunk:
-                lines.append(f"{ball.country}")
-            lines.append("")
-            tier += 1
-        text = "\n".join(lines).rstrip()
-    else:
-        for i, ball in enumerate(sorted_balls, start=1):
-            text += f"{i}. {ball.country}\n"
-
-    view = discord.ui.LayoutView()
-    text_display = discord.ui.TextDisplay("")
-    view.add_item(text_display)
-    menu = Menu(ctx.bot, view, TextSource(text, prefix="```md\n", suffix="```"), TextFormatter(text_display))
-    await menu.init()
-    await ctx.send(view=view, ephemeral=True)
