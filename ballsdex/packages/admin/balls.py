@@ -2,9 +2,6 @@ import asyncio
 import logging
 import random
 import re
-from collections import defaultdict
-from datetime import datetime
-from itertools import cycle
 from typing import TYPE_CHECKING, cast
 
 import discord
@@ -18,13 +15,11 @@ from django.urls import reverse
 from ballsdex.core.bot import BallsDexBot
 from ballsdex.core.utils import checks
 from ballsdex.core.utils.buttons import ConfirmChoiceView
-from ballsdex.core.utils.transformers import SpecialTransform
-from bd_models.models import Ball, BallInstance, Player, Special, Trade, TradeObject, balls as countryballs
+from bd_models.models import Ball, BallInstance, Player, Special, Trade, TradeObject
 from settings.models import settings
 from settings.utils import format_currency
-from ballsdex.core.utils.menus import Menu, TextFormatter, TextSource
 
-from .flags import BallsCountFlags, CreateFlags, GiveBallFlags, SpawnFlags, RarityFlags
+from .flags import BallsCountFlags, CreateFlags, GiveBallFlags, SpawnFlags
 
 if TYPE_CHECKING:
     from ballsdex.packages.countryballs.cog import CountryBallsSpawner
@@ -417,85 +412,27 @@ async def balls_delete(ctx: commands.Context[BallsDexBot], countryball_id: str, 
 
 @balls.command(name="transfer")
 @checks.has_permissions("bd_models.change_ballinstance")
-async def balls_transfer(
-    ctx: commands.Context[BallsDexBot],
-    user_1: discord.User,
-    user_2: discord.User | None = None,
-    countryball_id: str | None = None,
-    percentage: int | None = None,
-    users: str | None = None,
-    special: SpecialTransform | None = None,
-    clean_balls: bool = False,
-    trade_player: discord.User | None = None,
-):
+async def balls_transfer(ctx: commands.Context[BallsDexBot], countryball_id: str, user: discord.User):
     """
-    Transfer countryballs between users.
+    Transfer a countryball to another user.
 
     Parameters
     ----------
-    user_1: discord.User
-        Recipient, or source user when using percentage.
-    user_2: discord.User | None
-        Recipient user for percentage transfers.
-    countryball_id: str | None
-        Hex ID(s) to transfer (comma-separated).
-    percentage: int | None
-        Percentage of balls to transfer.
-    users: str | None
-        User IDs for pool distribution (comma-separated).
-    special: Special | None
-        Filter by special for percentage transfer.
-    clean_balls: bool
-        Reset trade player, trade history, and server ID.
-    trade_player: discord.User | None
-        Trade player to set (requires clean_balls=True).
+    countryball_id: str
+        The ID of the countryball you want to transfer.
+    user: discord.User
+        The user you want to transfer the countryball to.
     """
-    if countryball_id and (percentage or users):
-        await ctx.send(
-            "Cannot use countryball_id with percentage or users.", ephemeral=True
-        )
+    try:
+        ballIdConverted = int(countryball_id, 16)
+    except ValueError:
+        await ctx.send(f"The {settings.collectible_name} ID you gave is not valid.", ephemeral=True)
         return
-
-    if not countryball_id and not percentage:
-        await ctx.send(
-            "Either countryball_id or percentage must be provided.", ephemeral=True
-        )
-        return
-
-    if percentage and not (1 <= percentage <= 100):
-        await ctx.send(
-            "Percentage must be between 1 and 100.", ephemeral=True
-        )
-        return
-
-    if trade_player and not clean_balls:
-        await ctx.send(
-            "trade_player can only be used when clean_balls is True.", ephemeral=True
-        )
-        return
-
-    pool_user_ids = []
-    if users:
-        try:
-            pool_user_ids = [int(uid.strip()) for uid in users.split(",")]
-            if len(pool_user_ids) < 2:
-                raise ValueError("Need at least 2 users")
-        except ValueError:
-            await ctx.send(
-                "Invalid users format. Use comma-separated IDs (e.g., '123, 456, 789') with at least 2 users.",
-                ephemeral=True,
-            )
-            return
-
-    trade_player_db_id = None
-    if clean_balls and trade_player:
-        trade_player_obj, _ = await Player.objects.aget_or_create(discord_id=trade_player.id)
-        trade_player_db_id = trade_player_obj.id
-
-    if percentage and not users and not user_2:
-        await ctx.send(
-            "user_2 required when using percentage without users.", ephemeral=True
-        )
+    try:
+        ball = await BallInstance.objects.prefetch_related("player").aget(id=ballIdConverted)
+        original_player = ball.player
+    except BallInstance.DoesNotExist:
+        await ctx.send(f"The {settings.collectible_name} ID you gave does not exist.", ephemeral=True)
         return
 
     original_owner = await ctx.bot.fetch_user(original_player.discord_id)
@@ -515,108 +452,10 @@ async def balls_transfer(
     ball.player = player
     await ball.asave()
 
-        count = len(to_transfer)
-        special_text = f" {special.name}" if special else ""
-        target = f"pool of {len(pool_user_ids)} users" if users else str(user_2)
-        await ctx.send(
-            f"Transferred {count}{special_text} {settings.plural_collectible_name} ({percentage}%) from {user_1} to {target}.",
-            ephemeral=True,
-        )
-        target_log = f"pool: {', '.join(str(uid) for uid in pool_user_ids)}" if users else str(user_2)
-        log.info(
-            f"{ctx.author} transferred {count}{special_text} {settings.plural_collectible_name} ({percentage}%) from {user_1} to {target_log}.",
-            extra={"webhook": True},
-        )
-    else:
-        ball_ids_str = [bid.strip() for bid in countryball_id.split(",")]
-        ball_ids = []
-
-        try:
-            for bid in ball_ids_str:
-                ball_ids.append(int(bid, 16))
-        except ValueError:
-            await ctx.send(
-                f"Invalid {settings.collectible_name} ID format. Use hex IDs separated by commas.", ephemeral=True
-            )
-            return
-
-        balls_to_transfer = []
-        for bid in ball_ids:
-            try:
-                ball = await BallInstance.objects.prefetch_related("player").aget(id=bid)
-                if ball.deleted:
-                    await ctx.send(
-                        f"The {settings.collectible_name} {hex(bid)[2:].upper()} is deleted and cannot be transferred.",
-                        ephemeral=True,
-                    )
-                    return
-                balls_to_transfer.append(ball)
-            except BallInstance.DoesNotExist:
-                await ctx.send(
-                    f"The {settings.collectible_name} ID {hex(bid)[2:].upper()} does not exist.", ephemeral=True
-                )
-                return
-
-        if users:
-            new_players = [(await Player.objects.aget_or_create(discord_id=uid))[0] for uid in pool_user_ids]
-        else:
-            recipient, _ = await Player.objects.aget_or_create(discord_id=user_1.id)
-            new_players = [recipient]
-
-        rot = cycle(new_players)
-
-        transferred = []
-        for ball in balls_to_transfer:
-            original_player = ball.player
-            new_player = next(rot)
-
-            if original_player.discord_id == new_player.discord_id:
-                continue
-
-            if clean_balls:
-                await TradeObject.objects.filter(ballinstance_id=ball.id).adelete()
-                ball.trade_player_id = trade_player_db_id
-                ball.server_id = None
-                ball.favorite = False
-
-            ball.player = new_player
-            if users:
-                ball.favorite = False
-            await ball.asave()
-            transferred.append((ball, original_player, new_player))
-
-        if not transferred:
-            target = f"pool of {len(pool_user_ids)} users" if users else str(user_1)
-            await ctx.send(
-                f"All specified {settings.plural_collectible_name} already belong to {target}.",
-                ephemeral=True,
-            )
-            return
-
-        count = len(transferred)
-        target = f"pool of {len(pool_user_ids)} users" if users else str(user_1)
-
-        if count == 1 and not users:
-            ball, original_player, new_player = transferred[0]
-            await ctx.send(
-                f"Transferred {ball}({ball.pk:0X}) from {original_player} to {new_player}.",
-                ephemeral=True,
-            )
-            log.info(
-                f"{ctx.author} transferred {ball}({ball.pk:0X}) from {original_player} to {new_player}.",
-                extra={"webhook": True},
-            )
-        else:
-            ball_list = ", ".join([f"{b.pk:0X}" for b, _, _ in transferred])
-            await ctx.send(
-                f"Transferred {count} {settings.plural_collectible_name} to {target}.",
-                ephemeral=True,
-            )
-            target_log = f"pool: {', '.join(str(uid) for uid in pool_user_ids)}" if users else str(user_1)
-            log.info(
-                f"{ctx.author} transferred {count} {settings.plural_collectible_name} ({ball_list}) to {target_log}.",
-                extra={"webhook": True},
-            )
+    trade = await Trade.objects.acreate(player1=original_player, player2=player)
+    await TradeObject.objects.acreate(trade=trade, ballinstance=ball, player=original_player)
+    await ctx.send(f"Transfered {ball}({ball.pk}) from {original_player} to {user}.", ephemeral=True)
+    log.info(f"{ctx.author} transferred {ball}({ball.pk}) from {original_player} to {user}.", extra={"webhook": True})
 
 
 @balls.command(name="transferinv")
