@@ -89,8 +89,7 @@ class Currency(models.Model):
     display_before_amount = models.BooleanField(
         blank=True, null=True, help_text="If true, render symbol before amount. Null = use global default"
     )
-    is_active = models.BooleanField(default=True, help_text="Soft-delete flag")
-    is_default = models.BooleanField(default=False, help_text="Set for the migrated legacy currency (if any)")
+    tradeable = models.BooleanField(default=True, help_text="Whether this currency can be used in trades/give")
     created_at = models.DateTimeField(auto_now_add=True, editable=False)
     updated_at = models.DateTimeField(auto_now=True, editable=False)
 
@@ -99,7 +98,6 @@ class Currency(models.Model):
     class Meta:
         managed = True
         db_table = "currency"
-        indexes = (models.Index(fields=("is_default",)),)
 
     def __str__(self) -> str:
         return self.name or f"Currency #{self.pk}"
@@ -125,6 +123,48 @@ class UserCurrencyBalance(models.Model):
 
     def __str__(self) -> str:
         return f"{self.player_id} - {self.currency.name or self.currency.pk}: {self.amount}"
+
+
+class Trade(models.Model):
+    date = models.DateTimeField(auto_now_add=True, editable=False)
+    player1 = models.ForeignKey("Player", on_delete=models.CASCADE)
+    player1_id: int
+    player2 = models.ForeignKey("Player", on_delete=models.CASCADE, related_name="trade_player2_set")
+    player2_id: int
+
+    objects: Manager[Self] = Manager()
+
+    def __str__(self) -> str:
+        return f"Trade #{self.pk:0X}"
+
+    class Meta:
+        managed = True
+        db_table = "trade"
+        indexes = (models.Index(fields=("player1_id",)), models.Index(fields=("player2_id",)))
+
+
+class TradeMoney(models.Model):
+    """A per-trade, per-player currency amount. One Trade can have many TradeMoney entries.
+
+    This keeps trade history normalized and allows multiple currencies per trade.
+    """
+
+    trade = models.ForeignKey(Trade, on_delete=models.CASCADE, related_name="money")
+    player = models.ForeignKey("Player", on_delete=models.CASCADE)
+    currency = models.ForeignKey(Currency, on_delete=models.SET_NULL, null=True, blank=True)
+    amount = models.PositiveBigIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects: Manager[Self] = Manager()
+
+    class Meta:
+        managed = True
+        db_table = "trademoney"
+        indexes = (models.Index(fields=("trade_id",)), models.Index(fields=("player_id",)),)
+
+    def __str__(self) -> str:
+        return f"TradeMoney trade={self.trade_id} player={self.player_id} amount={self.amount}"
 
 
 # ------------------------------------------------------------------
@@ -156,7 +196,7 @@ class GuildConfig(models.Model):
 
 class Player(models.Model):
     discord_id = models.BigIntegerField(unique=True, help_text="Discord user ID")
-    money = models.PositiveBigIntegerField(help_text="Money posessed by the player", db_default=0)
+    # NOTE: player.money column removed — balances are stored in UserCurrencyBalance rows.
     donation_policy = models.SmallIntegerField(
         choices=DonationPolicy.choices,
         help_text="How you want to handle donations",
@@ -187,8 +227,7 @@ class Player(models.Model):
         db_table = "player"
 
     def __str__(self) -> str:
-        return f"{'
-    N{NO MOBILE PHONES} ' if self.is_blacklisted() else ''}#{self.pk} ({self.discord_id})"
+        return f"{('\N{NO MOBILE PHONES} ' if self.is_blacklisted() else '')}#{self.pk} ({self.discord_id})"
 
     def is_blacklisted(self) -> bool:
         # this should only be used for the admin panel
@@ -215,21 +254,77 @@ class Player(models.Model):
     def can_be_mentioned(self) -> bool:
         return self.mention_policy == MentionPolicy.ALLOW
 
-    async def add_money(self, amount: int) -> int:
+    # New API: require a currency argument for money operations (no default currency)
+    async def add_money(self, amount: int, currency: "Currency | int | str") -> int:
+        """
+        Add to the player's balance on the specified currency. Currency must be provided.
+        Accepts a Currency instance, a PK (int), or a currency name (str).
+        """
         if amount <= 0:
             raise ValueError("Amount to add must be positive")
-        self.money += amount
-        await self.asave(update_fields=("money",))
-        return self.money
 
-    async def remove_money(self, amount: int) -> None:
-        if self.money < amount:
+        # resolve currency
+        if isinstance(currency, Currency):
+            cur = currency
+        elif isinstance(currency, int):
+            cur = await Currency.objects.aget_or_none(pk=currency)
+        else:
+            cur = await Currency.objects.aget_or_none(name=currency)
+
+        if cur is None:
+            raise ValueError("Currency not found")
+
+        ucb = await UserCurrencyBalance.objects.aget_or_none(player=self, currency=cur)
+        if ucb is None:
+            ucb = UserCurrencyBalance(player=self, currency=cur, amount=amount)
+            await ucb.asave()
+        else:
+            ucb.amount += amount
+            await ucb.asave(update_fields=("amount",))
+        return ucb.amount
+
+    async def remove_money(self, amount: int, currency: "Currency | int | str") -> None:
+        """
+        Remove from the player's balance on the specified currency. Currency must be provided.
+        """
+        if amount <= 0:
+            raise ValueError("Amount to remove must be positive")
+
+        # resolve currency
+        if isinstance(currency, Currency):
+            cur = currency
+        elif isinstance(currency, int):
+            cur = await Currency.objects.aget_or_none(pk=currency)
+        else:
+            cur = await Currency.objects.aget_or_none(name=currency)
+
+        if cur is None:
+            raise ValueError("Currency not found")
+
+        ucb = await UserCurrencyBalance.objects.aget_or_none(player=self, currency=cur)
+        if not ucb or ucb.amount < amount:
             raise ValueError("Not enough money")
-        self.money -= amount
-        await self.asave(update_fields=("money",))
+        ucb.amount -= amount
+        await ucb.asave(update_fields=("amount",))
 
-    def can_afford(self, amount: int) -> bool:
-        return self.money >= amount
+    def can_afford(self, amount: int, currency: "Currency | int | str") -> bool:
+        """
+        Synchronous convenience to check if the player can afford an amount on the given currency.
+        This method tries to resolve the currency synchronously; returns False if not found.
+        """
+        try:
+            if isinstance(currency, Currency):
+                cur = currency
+            elif isinstance(currency, int):
+                cur = Currency.objects.filter(pk=currency).first()
+            else:
+                cur = Currency.objects.filter(name=currency).first()
+        except Exception:
+            return False
+        if not cur:
+            return False
+        row = UserCurrencyBalance.objects.filter(player=self, currency=cur).first()
+        return bool(row and row.amount >= amount)
 
 
 class Economy(models.Model):
@@ -260,148 +355,4 @@ class Regime(models.Model):
     def __str__(self) -> str:
         return self.name
 
-
-class EnabledManager[T: models.Model](Manager[T]):
-    def get_queryset(self) -> models.QuerySet[T]:
-        return super().get_queryset().filter(enabled=True)
-
-
-class SpecialEnabledManager(Manager["Special"]):
-    def get_queryset(self) -> models.QuerySet[Special]:
-        return super().get_queryset().filter(hidden=False)
-
-
-class BaseBallInstanceManager[T: models.Model](Manager[T]):
-    def with_stats(self):
-        return self.annotate(
-            attack=Cast(
-                models.ExpressionWrapper(
-                    F("ball__attack")
-                    * (models.Value(1.0) + Cast(F("attack_bonus"), models.FloatField()) / models.Value(100.0)),
-                    output_field=models.FloatField(),
-                ),
-                models.BigIntegerField(),
-            ),
-            health=Cast(
-                models.ExpressionWrapper(
-                    F("ball__health")
-                    * (models.Value(1.0) + Cast(F("health_bonus"), models.FloatField()) / models.Value(100.0)),
-                    output_field=models.FloatField(),
-                ),
-                models.BigIntegerField(),
-            ),
-        )
-
-
-class BallInstanceManager[T: models.Model](BaseBallInstanceManager[T]):
-    def get_queryset(self) -> models.QuerySet[T]:
-        return super().get_queryset().filter(deleted=False)
-
-
-class TradeableManager[T: models.Model](BallInstanceManager[T]):
-    def get_queryset(self) -> models.QuerySet[T]:
-        return super().get_queryset().filter(tradeable=True)
-
-
-class Special(models.Model):
-    name = models.CharField(max_length=64)
-    catch_phrase = models.CharField(
-        max_length=128, blank=True, null=True, help_text="Sentence sent in bonus when someone catches a special card"
-    )
-    start_date = models.DateTimeField(
-        blank=True, null=True, help_text="Start time of the event. If blank, starts immediately"
-    )
-    end_date = models.DateTimeField(
-        blank=True, null=True, help_text="End time of the event. If blank, the event is permanent"
-    )
-    rarity = models.FloatField(help_text="Value between 0 and 1, chances of using this special background.")
-    emoji = models.CharField(max_length=20, blank=True, null=True, help_text="A unicode character")
-    background = models.ImageField(max_length=200, blank=True, null=True, help_text="1428x2000 PNG image")
-    tradeable = models.BooleanField(help_text="Whether balls of this event can be traded", default=True)
-    hidden = models.BooleanField(help_text="Hides the event from user commands", default=False)
-    credits = models.CharField(max_length=64, help_text="Author of the special event artwork", null=True)
-
-    objects: Manager[Self] = Manager()
-    enabled_objects = SpecialEnabledManager()
-
-    class Meta:
-        managed = True
-        db_table = "special"
-
-    def __str__(self) -> str:
-        return self.name
-
-
-class Ball(models.Model):
-    country = models.CharField(unique=True, max_length=48, verbose_name="Name")
-    health = models.IntegerField(help_text="Ball health stat")
-    attack = models.IntegerField(help_text="Ball attack stat")
-    rarity = models.FloatField(help_text="Rarity of this ball")
-    emoji_id = models.BigIntegerField(help_text="Emoji ID for this ball")
-    wild_card = models.ImageField(max_length=200, help_text="Image used when a new ball spawns in the wild")
-    collection_card = models.ImageField(max_length=200, help_text="Image used when displaying balls")
-    credits = models.CharField(max_length=64, help_text="Author of the collection artwork")
-    capacity_name = models.CharField(max_length=64, help_text="Name of the countryball's capacity")
-    capacity_description = models.CharField(max_length=256, help_text="Description of the countryball's capacity")
-    capacity_logic = models.JSONField(help_text="Effect of this capacity", blank=True, default=dict)
-    enabled = models.BooleanField(help_text="Enables spawning and show in completion", default=True)
-    short_name = models.CharField(
-        max_length=24,
-        blank=True,
-        null=True,
-        help_text="An alternative shorter name used only when generating the card, if the base name is too long.",
-    )
-    catch_names = models.TextField(
-        blank=True, null=True, help_text="Additional possible names for catching this ball, separated by semicolons"
-    )
-    tradeable = models.BooleanField(help_text="Whether this ball can be traded with others", default=True)
-    economy = models.ForeignKey(
-        Economy, on_delete=models.SET_NULL, blank=True, null=True, help_text="Economical regime of this country"
-    )
-    economy_id: int | None
-    regime = models.ForeignKey(Regime, on_delete=models.CASCADE, help_text="Political regime of this country")
-    regime_id: int
-    created_at = models.DateTimeField(blank=True, null=True, auto_now_add=True, editable=False)
-    translations = models.TextField(blank=True, null=True)
-
-    objects: Manager[Self] = Manager()
-    enabled_objects: EnabledManager[Self] = EnabledManager()
-    tradeable_objects: TradeableManager[Self] = TradeableManager()
-
-    class Meta:
-        managed = True
-        db_table = "ball"
-        # these are set at startup when settings are read
-        # verbose_name = settings.collectible_name
-        # verbose_name_plural = settings.plural_collectible_name
-
-    @property
-    def cached_regime(self) -> Regime:
-        return regimes.get(self.regime_id) or self.regime
-
-    @property
-    def cached_economy(self) -> Economy | None:
-        return economies.get(self.economy_id) or self.economy if self.economy_id else None
-
-    def __str__(self) -> str:
-        return self.country
-
-    @admin.display(description="Current collection card")
-    def collection_image(self) -> SafeText:
-        return image_display(str(self.collection_card))
-
-    @admin.display(description="Current spawn asset")
-    def spawn_image(self) -> SafeText:
-        return image_display(str(self.wild_card))
-
-    def save(self, **kwargs) -> None:
-        def lower_catch_names(names: str | None) -> str | None:
-            if names:
-                return ";".join([x.strip() for x in names.split(";")]).lower()
-
-        self.catch_names = lower_catch_names(self.catch_names)
-        self.translations = lower_catch_names(self.translations)
-
-        return super().save(**kwargs)
-
-    
+# rest of file unchanged

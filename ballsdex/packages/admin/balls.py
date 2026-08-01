@@ -23,15 +23,18 @@ async def balls_transferinv(
         return
     qs = BallInstance.objects.filter(player=source_player)
     balls_count = await qs.acount()
-    if balls_count == 0 and (not currency or source_player.money == 0):
+    if balls_count == 0 and (not currency or await UserCurrencyBalance.objects.filter(player=source_player).acount() == 0):
         await ctx.send(f"{source}'s inventory is empty.", ephemeral=True)
         return
 
     view = ConfirmChoiceView(ctx, accept_message="Confirmed, transferring...", cancel_message="Request cancelled.")
     if currency:
+        # compute total per-currency summary
+        balances = await UserCurrencyBalance.objects.filter(player=source_player, amount__gt=0).select_related("currency").all()
+        money_txt = ", ".join(f"{b.amount} {b.currency.name or b.currency.pk}" for b in balances)
         text = (
             f"Are you sure you want to transfer {balls_count} {settings.plural_collectible_name} and "
-            f"{format_currency(source_player.money)} from {source} to {dest}?"
+            f"{money_txt} from {source} to {dest}?"
         )
     else:
         text = (
@@ -44,37 +47,42 @@ async def balls_transferinv(
         return
 
     dest_player, _ = await Player.objects.aget_or_create(discord_id=dest.id)
-    transferred_money = source_player.money
 
     @transaction.atomic
     def perform_transfer():
-        trade = Trade.objects.create(
-            player1=source_player, player2=dest_player, player1_money=source_player.money if currency else 0
-        )
+        trade = Trade.objects.create(player1=source_player, player2=dest_player)
         trade_objects: list[TradeObject] = []
         for ball in qs:
             trade_objects.append(TradeObject(trade=trade, ballinstance=ball, player=source_player))
         TradeObject.objects.bulk_create(trade_objects)
         updated = qs.update(player=dest_player, trade_player=source_player)
+
         if currency:
-            dest_player.money += source_player.money
-            source_player.money = 0
-            dest_player.save(update_fields=("money",))
-            source_player.save(update_fields=("money",))
+            # transfer every currency from source to dest, create one TradeMoney entry per currency
+            balances = list(UserCurrencyBalance.objects.select_for_update().filter(player=source_player, amount__gt=0))
+            for b in balances:
+                # deduct from source
+                amount = b.amount
+                b.amount = 0
+                b.save(update_fields=("amount",))
+                # credit dest
+                dest_ucb, _ = UserCurrencyBalance.objects.get_or_create(player=dest_player, currency=b.currency, defaults={"amount": 0})
+                dest_ucb.amount = F("amount") + amount
+                dest_ucb.save(update_fields=("amount",))
+                # record per-currency movement
+                TradeMoney.objects.create(trade=trade, player=source_player, currency=b.currency, amount=amount)
         return updated
 
     updated = await sync_to_async(perform_transfer)()
 
     if currency:
         text = (
-            f"{updated} {settings.plural_collectible_name} and {format_currency(transferred_money)} "
-            f"transferred from {source} to {dest}."
+            f"{updated} {settings.plural_collectible_name} and balances transferred from {source} to {dest}."
         )
     else:
         text = f"{updated} {settings.plural_collectible_name} transferred from {source} to {dest}."
     await ctx.send(text, ephemeral=True)
     log.info(
-        f"{ctx.author} transferred inventory of {source} ({source.id}, {updated} {settings.plural_collectible_name}, "
-        f"{format_currency(transferred_money if currency else 0)}) to {dest} ({dest.id}).",
+        f"{ctx.author} transferred inventory of {source} ({source.id}, {updated} {settings.plural_collectible_name}) to {dest} ({dest.id}).",
         extra={"webhook": True},
     )
