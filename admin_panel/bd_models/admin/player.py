@@ -53,9 +53,7 @@ class BallInstanceTabular(TabularInlinePaginated):
     def server(self, obj: BallInstance):
         opts = GuildConfig._meta
         admin_url = reverse(
-            "%s:%s_%s_change" % (self.admin_site.name, opts.app_label, opts.model_name),
-            None,
-            (quote(obj.guild_config_id),),  # type: ignore
+            "%s:%s_%s_change" % (self.admin_site.name, opts.app_label, opts.model_name), None, (quote(obj.guild_config_id),)
         )
         # Display a link to the admin page.
         return mark_safe(f'<a href="{admin_url}">{obj.server_id}</a>')
