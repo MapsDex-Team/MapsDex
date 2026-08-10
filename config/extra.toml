@@ -1,6 +1,6 @@
 # Rarity Package
 [[ballsdex.packages]]
-location = "git+https://github.com/MapsDex-Team/BallsDex-Rarity-Pack.git@0.0.4#master"
+location = "git+https://github.com/MapsDex-Team/BallsDex-Rarity-Pack.git@0.0.5#master"
 path = "rarity"
 enabled = true
 
@@ -52,21 +52,15 @@ location = "git+https://github.com/Ray-Hsueh/BallsDex-Broadcast-Pack.git"
 path = "broadcast"
 enabled = true
 
-# Font-Changer Package
-[[ballsdex.packages]]
-location = "git+https://github.com/dormieriancitizen/bd-fontchanger.git"
-path = "bd_fontchanger"
-enabled = true
-
 # V2-Completion Package
 [[ballsdex.packages]]
-location = "git+https://github.com/cewlgruyere/V2-Completion.git@v0.0.4"
+location = "git+https://github.com/cewlgruyere/V2-Completion.git@v0.0.41#main"
 path = "v2_completion"
 enabled = true
 
 # ReCollection Package
 [[ballsdex.packages]]
-location = "git+https://github.com/cewlgruyere/ReCol.git"
+location = "git+https://github.com/cewlgruyere/ReCol.git@1.0.0#master"
 path = "recol"
 enabled = true
 
@@ -74,4 +68,16 @@ enabled = true
 [[ballsdex.packages]]
 location = "git+https://github.com/MapsDex-Team/BallsDex-AntiFarm-Pack.git@0.0.1#master"
 path = "antifarm"
+enabled = true
+
+# Font-Changer Package
+[[ballsdex.packages]]
+location = "git+https://github.com/dormieriancitizen/bd-fontchanger.git"
+path = "bd_fontchanger"
+enabled = true
+
+# Labelmaker Package
+[[ballsdex.packages]]
+location = "git+https://github.com/dormieriancitizen/bd-labelmaker.git@e9dff5f86717df256ff09940334f5801085ea30d"
+path = "labelmaker_app"
 enabled = true
