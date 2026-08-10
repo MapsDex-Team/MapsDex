@@ -71,14 +71,6 @@ class Controls(ActionRow):
     async def go_to_last_page(self, interaction: Interaction, button: Button):
         await self.menu.show_page(interaction, self.menu.source.get_max_pages() - 1)
 
-    @button(label="Quit", style=discord.ButtonStyle.danger)
-    async def quit(self, interaction: Interaction, button: Button):
-        self.view.stop()
-        for item in self.view.walk_children():
-            if hasattr(item, "disabled"):
-                item.disabled = True
-        await interaction.response.edit_message(view=self.view)
-
     def edit_buttons(self, page: int):
         max = self.menu.source.get_max_pages()
         self.go_to_page.label = f"{str(page + 1)} (go to)"
