@@ -72,12 +72,12 @@ enabled = true
 
 # Font-Changer Package
 [[ballsdex.packages]]
-location = "git+https://github.com/dormieriancitizen/bd-fontchanger.git"
+location = "git+https://github.com/dormieriancitizen/bd-fontchanger.git@v1.0.1#main"
 path = "bd_fontchanger"
 enabled = true
 
 # Labelmaker Package
 [[ballsdex.packages]]
-location = "git+https://github.com/dormieriancitizen/bd-labelmaker.git@e9dff5f86717df256ff09940334f5801085ea30d"
+location = "git+https://github.com/dormieriancitizen/bd-labelmaker.git@v1.0.1#main"
 path = "labelmaker_app"
 enabled = true
