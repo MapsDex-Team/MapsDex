@@ -25,7 +25,7 @@ from ballsdex.core.utils.menus import CountryballFormatter, Menu, ModelSource, T
 from bd_models.enums import TradeCooldownPolicy
 from bd_models.models import BallInstance, Player, Trade, TradeObject
 from settings.models import settings
-from settings.utils import format_currency
+from settings.utils import format_currency, parse_currency
 
 from .errors import (
     AlreadyLockedError,
@@ -78,7 +78,7 @@ class SetMoneyModal(Modal, title="Set money offering"):
             await interaction.response.send_message("You have already locked your proposal!", ephemeral=True)
             return
         try:
-            proposal_amount = int(self.proposal.value.strip())
+            proposal_amount = parse_currency(self.proposal.value)
         except ValueError:
             await interaction.response.send_message("This number could not be parsed.", ephemeral=True)
             return
