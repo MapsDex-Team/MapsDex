@@ -37,9 +37,7 @@ class SpawnFlags(FlagConverter):
     )
     atk_bonus: int | None = flag(description="Force the countryball to have a specific attack bonus when caught.")
     hp_bonus: int | None = flag(description="Force the countryball to have a specific health bonus when caught.")
-    tier_range: str | None = flag(
-        description="Tier range to spawn from (e.g. '2-8' for T2 to T8). Only works with random spawns."
-    )
+    tier_range: str | None = flag(description="The tier range to spawn from (Tx-Ty). Only works with random spawns.")
 
 
 class GiveBallFlags(FlagConverter):
