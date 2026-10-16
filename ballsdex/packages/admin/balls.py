@@ -127,7 +127,7 @@ async def spawn(ctx: commands.Context[BallsDexBot], *, flags: SpawnFlags):
 
         if "-" not in flags.tier_range:
             await ctx.send(
-                "Invalid tier_range format. Use format like '2-8' for T2 to T8.",
+                "Invalid tier_range format. Use format like '1-100' for T1 to T100.",
                 ephemeral=True
             )
             return
